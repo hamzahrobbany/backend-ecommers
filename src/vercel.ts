@@ -1,10 +1,19 @@
 import { bootstrapServer } from './main';
 
 /**
- * Entry point for Vercel Serverless Functions
+ * Vercel serverless entry point.
+ * Uses Express adapter from bootstrapServer().
  */
 export default async function handler(req: any, res: any) {
-  const app = await bootstrapServer();
-  const instance = app.getHttpAdapter().getInstance();
-  instance.server.emit('request', req, res);
+  try {
+    const app = await bootstrapServer();
+    const instance = app.getHttpAdapter().getInstance();
+
+    // ✅ Handle Express request directly (no .server.emit for Fastify)
+    return instance(req, res);
+  } catch (err) {
+    console.error('❌ Vercel function crashed:', err);
+    res.statusCode = 500;
+    res.end('Internal Server Error');
+  }
 }
