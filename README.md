@@ -1,98 +1,147 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+<div align="center">
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+# 🛒 Backend E-Commerce API
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+### ⚡ Built with NestJS + Fastify + Vercel
 
-## Description
+A lightweight, serverless backend API for modern e-commerce applications.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+[![NestJS](https://img.shields.io/badge/NestJS-11.x-E0234E?logo=nestjs&logoColor=white)](https://nestjs.com/)
+[![Fastify](https://img.shields.io/badge/Fastify-5.x-000000?logo=fastify&logoColor=white)](https://fastify.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-000000?logo=vercel&logoColor=white)](https://vercel.com)
+[![pnpm](https://img.shields.io/badge/Package%20Manager-pnpm-F69220?logo=pnpm&logoColor=white)](https://pnpm.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Project setup
+</div>
 
+---
+
+## 🚀 Features
+
+✅ **NestJS + Fastify** — blazing-fast, modular, and scalable  
+✅ **Serverless-ready** — deploy seamlessly on Vercel  
+✅ **Zod Validation** — type-safe and runtime validation  
+✅ **CORS + Helmet + Compression** — secure defaults  
+✅ **Sample Products API** — ready to integrate with frontend  
+✅ **Auto Deploy & Push to GitHub** — via `pnpm release`
+
+---
+
+## 📁 Folder Structure
+
+backend-ecommers/
+├── src/
+│ ├── app.controller.ts # Root & info endpoints
+│ ├── products.controller.ts # Example Product API
+│ ├── app.module.ts # Root module
+│ ├── main.ts # Bootstrap (Nest + Fastify)
+│ └── vercel.ts # Entry point for Vercel
+├── vercel.json # Vercel config
+├── package.json
+├── tsconfig.json
+└── README.md
+
+yaml
+Salin kode
+
+---
+
+## ⚙️ Tech Stack
+
+| Layer | Technology |
+|-------|-------------|
+| Framework | [NestJS 11](https://nestjs.com) |
+| Server Adapter | [Fastify](https://fastify.dev) |
+| Deployment | [Vercel Serverless Functions](https://vercel.com) |
+| Language | [TypeScript 5.7+](https://www.typescriptlang.org) |
+| Package Manager | [pnpm 10+](https://pnpm.io) |
+| Logging | [Pino](https://github.com/pinojs/pino) |
+| Validation | [Zod](https://github.com/colinhacks/zod) |
+
+---
+
+## 🧑‍💻 Local Development
+
+Clone & install dependencies:
 ```bash
-$ pnpm install
-```
+git clone https://github.com/hamzahrobbany/backend-ecommers.git
+cd backend-ecommers
+pnpm install
+Start development server:
 
-## Compile and run the project
+bash
+Salin kode
+pnpm start:dev
+Run production build locally:
 
-```bash
-# development
-$ pnpm run start
+bash
+Salin kode
+pnpm build
+pnpm start:vercel
+Access locally → http://localhost:3000/api/info
 
-# watch mode
-$ pnpm run start:dev
+🧱 Available Endpoints
+Method	Endpoint	Description
+GET	/	Root health check
+GET	/healthz	Health status
+GET	/api/info	App info
+GET	/api/products	List sample products
+GET	/api/products/:id	Get product by ID
 
-# production mode
-$ pnpm run start:prod
-```
+Example:
 
-## Run tests
+json
+Salin kode
+{
+  "ok": true,
+  "total": 3,
+  "data": [
+    { "id": 1, "name": "Kopi Arabica Gayo", "price": 75000 },
+    { "id": 2, "name": "Kopi Robusta Lampung", "price": 60000 }
+  ]
+}
+🚀 Deployment on Vercel
+Install CLI
 
-```bash
-# unit tests
-$ pnpm run test
+bash
+Salin kode
+npm i -g vercel
+Build & deploy
 
-# e2e tests
-$ pnpm run test:e2e
+bash
+Salin kode
+pnpm release
+Done 🎉
+Live API →
+👉 https://backend-ecommers.vercel.app/api/products
 
-# test coverage
-$ pnpm run test:cov
-```
+📦 Scripts
+Command	Description
+pnpm build	Compile TypeScript to JS
+pnpm start:dev	Start NestJS in watch mode
+pnpm start:vercel	Run serverless build locally
+pnpm clean	Remove dist folder
+pnpm repair-lock	Rebuild pnpm-lock.yaml
+pnpm release	Clean → Build → Deploy → Auto-push to GitHub
 
-## Deployment
+🧠 Roadmap
+ 🔐 JWT Authentication (Login/Register)
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+ 💾 Database (Supabase / PostgreSQL)
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+ 💳 Orders & Transactions
 
-```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
-```
+ 📦 Image Upload (Supabase Storage)
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+ 🧮 Admin Dashboard (Next.js integration)
 
-## Resources
+👨‍💻 Author
+ Hamzah Robbany 
+💼 Freelance Software Engineer — Fullstack Developer
+🌍 GitHub • LinkedIn (optional)
 
-Check out a few resources that may come in handy when working with NestJS:
+🪪 License
+This project is licensed under the MIT License — free to use and modify.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+<div align="center"> <sub>© 2025 Hamzah Robbany — Crafted with ❤️ using NestJS & Vercel</sub> </div> ```
