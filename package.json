@@ -14,7 +14,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main.js",
     "start:vercel": "node dist/vercel.js",
-    "release": "pnpm clean && pnpm build && vercel --prod",
+    "release": "pnpm clean && pnpm build && vercel --prod && git add . && git commit -m \"chore: auto release\" && git push",
 
     "repair-lock": "pnpm rimraf pnpm-lock.yaml && pnpm install",
 
