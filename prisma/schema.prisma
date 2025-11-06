@@ -11,74 +11,97 @@ datasource db {
 /// 🏢 TENANT (Toko)
 /// ==========================
 model Tenant {
-  id          String        @id @default(uuid())
-  name        String
-  domain      String?       @unique
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id        String   @id @default(uuid())
+  name      String
+  domain    String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  users       User[]
+  // Relasi
   products    Product[]
   subscribers Subscriber[]
+  users       User[]
+  orders      Order[]
 }
 
 /// ==========================
 /// 👤 USERS (Admin, Staff, Customer)
 /// ==========================
 model User {
-  id          String     @id @default(uuid())
-  tenant      Tenant     @relation(fields: [tenantId], references: [id])
-  tenantId    String
-  name        String
-  email       String     @unique
-  password    String
-  role        Role       @default(CUSTOMER)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  orders      Order[]
+  id            String         @id @default(uuid())
+  tenantId      String
+  name          String
+  email         String         @unique
+  password      String
+  role          Role           @default(CUSTOMER)
+  refreshTokens RefreshToken[] // relasi ke token
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // Relasi
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  orders Order[]
+}
+
+/// ==========================
+/// 🔐 REFRESH TOKENS (Auth)
+/// ==========================
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 /// ==========================
 /// ☕ PRODUCTS
 /// ==========================
 model Product {
-  id          String       @id @default(uuid())
-  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  id          String   @id @default(uuid())
   tenantId    String
   name        String
   description String?
   price       Int
   image       String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  stocks      Stock[]
-  orderItems  OrderItem[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relasi
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  orderItems OrderItem[]
+  stocks     Stock[]
 }
 
 /// ==========================
-/// 📦 STOCKS (dipisah)
+/// 📦 STOCKS (dipisah per lokasi)
 /// ==========================
 model Stock {
-  id          String     @id @default(uuid())
-  product     Product    @relation(fields: [productId], references: [id])
-  productId   String
-  location    String?
-  quantity    Int        @default(0)
-  updatedAt   DateTime   @updatedAt
+  id        String   @id @default(uuid())
+  productId String
+  location  String?
+  quantity  Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  // Relasi
+  product Product @relation(fields: [productId], references: [id])
 }
 
 /// ==========================
-/// ✉️ SUBSCRIBE MODULE
+/// ✉️ SUBSCRIBERS (Newsletter)
 /// ==========================
 model Subscriber {
-  id          String    @id @default(uuid())
-  tenant      Tenant    @relation(fields: [tenantId], references: [id])
-  tenantId    String
-  email       String
-  name        String?
-  subscribed  Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id         String   @id @default(uuid())
+  tenantId   String
+  email      String
+  name       String?
+  subscribed Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, email])
 }
@@ -87,36 +110,41 @@ model Subscriber {
 /// 🧾 ORDERS
 /// ==========================
 model Order {
-  id          String       @id @default(uuid())
-  user        User         @relation(fields: [userId], references: [id])
+  id          String      @id @default(uuid())
+  tenantId    String
   userId      String
   totalAmount Int
-  status      OrderStatus  @default(PENDING)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  items       OrderItem[]
-  payment     Payment?
+  status      OrderStatus @default(PENDING)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relasi
+  tenant  Tenant      @relation(fields: [tenantId], references: [id])
+  user    User        @relation(fields: [userId], references: [id])
+  items   OrderItem[]
+  payment Payment?
 }
 
 /// ==========================
 /// 🛒 ORDER ITEMS
 /// ==========================
 model OrderItem {
-  id          String     @id @default(uuid())
-  order       Order      @relation(fields: [orderId], references: [id])
-  orderId     String
-  product     Product    @relation(fields: [productId], references: [id])
-  productId   String
-  quantity    Int
-  subtotal    Int
+  id        String @id @default(uuid())
+  orderId   String
+  productId String
+  quantity  Int
+  subtotal  Int
+
+  // Relasi
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
 }
 
 /// ==========================
 /// 💳 PAYMENTS
 /// ==========================
 model Payment {
-  id            String       @id @default(uuid())
-  order         Order         @relation(fields: [orderId], references: [id])
+  id            String        @id @default(uuid())
   orderId       String        @unique
   method        PaymentMethod @default(CASH)
   amount        Int
@@ -124,13 +152,16 @@ model Payment {
   transactionId String?       @unique
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
 }
 
 /// ==========================
-/// ENUMS
+/// 📚 ENUMS
 /// ==========================
 enum Role {
   ADMIN
+  STAFF
   CUSTOMER
 }
 

@@ -12,4 +12,13 @@ export class UsersService {
   create(data: any) {
     return this.prisma.user.create({ data });
   }
+
+  /**
+   * 🔍 Cari user berdasarkan email
+   */
+  async findByEmail(email: string) {
+    return this.prisma.user.findUnique({
+      where: { email },
+    });
+  }
 }

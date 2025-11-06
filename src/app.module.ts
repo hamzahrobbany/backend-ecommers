@@ -1,17 +1,29 @@
-import { Module } from '@nestjs/common';
-import { PrismaModule } from '../prisma/prisma.module';
-import { ProductsModule } from './products/products.module';
-import { TenantsModule } from './tenants/tenants.module';
-import { SubscribeModule } from './subscribe/subscribe.module';
-import { UsersModule } from './users/users.module';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
+
+// === Import modul lain di sini ===
+import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { ProductsModule } from './modules/products/products.module';
+// Tambahkan module lain sesuai kebutuhan...
+import { DebugController } from './modules/debug/debug.controller';
 
 @Module({
   imports: [
+    // Module untuk environment variables
+    ConfigModule.forRoot({ isGlobal: true }),
+
+    // Module utama
     PrismaModule,
+    AuthModule,
     ProductsModule,
-    TenantsModule,
-    SubscribeModule,
-    UsersModule,
   ],
+  controllers: [DebugController],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Terapkan TenantContextMiddleware ke semua route
+    consumer.apply(TenantContextMiddleware).forRoutes('*');
+  }
+}

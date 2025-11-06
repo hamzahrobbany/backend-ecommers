@@ -1,18 +1,28 @@
+// vercel.ts (serverless entry point)
 import { bootstrapServer } from './main';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 /**
- * Vercel serverless entry point.
- * Uses Express adapter from bootstrapServer().
+ * ✅ Vercel serverless entry point
+ * Mem-bootstraps NestJS (Express adapter) hanya sekali,
+ * lalu meneruskan semua request ke instance Express.
  */
-export default async function handler(req: any, res: any) {
-  try {
-    const app = await bootstrapServer();
-    const instance = app.getHttpAdapter().getInstance();
 
-    // ✅ Handle Express request directly (no .server.emit for Fastify)
+let cachedApp: any = null;
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  try {
+    // Hindari re-init setiap request di Vercel
+    if (!cachedApp) {
+      cachedApp = await bootstrapServer();
+    }
+
+    const instance = cachedApp.getHttpAdapter().getInstance();
+
+    // ✅ Panggil langsung handler Express
     return instance(req, res);
-  } catch (err) {
-    console.error('❌ Vercel function crashed:', err);
+  } catch (error) {
+    console.error('❌ Vercel function crashed:', error);
     res.statusCode = 500;
     res.end('Internal Server Error');
   }
