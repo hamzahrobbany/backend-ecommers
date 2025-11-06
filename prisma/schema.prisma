@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// ==========================
+/// 🏢 TENANT (Toko)
+/// ==========================
+model Tenant {
+  id          String        @id @default(uuid())
+  name        String
+  domain      String?       @unique
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  users       User[]
+  products    Product[]
+  subscribers Subscriber[]
+}
+
+/// ==========================
+/// 👤 USERS (Admin, Staff, Customer)
+/// ==========================
+model User {
+  id          String     @id @default(uuid())
+  tenant      Tenant     @relation(fields: [tenantId], references: [id])
+  tenantId    String
+  name        String
+  email       String     @unique
+  password    String
+  role        Role       @default(CUSTOMER)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  orders      Order[]
+}
+
+/// ==========================
+/// ☕ PRODUCTS
+/// ==========================
+model Product {
+  id          String       @id @default(uuid())
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  tenantId    String
+  name        String
+  description String?
+  price       Int
+  image       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  stocks      Stock[]
+  orderItems  OrderItem[]
+}
+
+/// ==========================
+/// 📦 STOCKS (dipisah)
+/// ==========================
+model Stock {
+  id          String     @id @default(uuid())
+  product     Product    @relation(fields: [productId], references: [id])
+  productId   String
+  location    String?
+  quantity    Int        @default(0)
+  updatedAt   DateTime   @updatedAt
+}
+
+/// ==========================
+/// ✉️ SUBSCRIBE MODULE
+/// ==========================
+model Subscriber {
+  id          String    @id @default(uuid())
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  tenantId    String
+  email       String
+  name        String?
+  subscribed  Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, email])
+}
+
+/// ==========================
+/// 🧾 ORDERS
+/// ==========================
+model Order {
+  id          String       @id @default(uuid())
+  user        User         @relation(fields: [userId], references: [id])
+  userId      String
+  totalAmount Int
+  status      OrderStatus  @default(PENDING)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  items       OrderItem[]
+  payment     Payment?
+}
+
+/// ==========================
+/// 🛒 ORDER ITEMS
+/// ==========================
+model OrderItem {
+  id          String     @id @default(uuid())
+  order       Order      @relation(fields: [orderId], references: [id])
+  orderId     String
+  product     Product    @relation(fields: [productId], references: [id])
+  productId   String
+  quantity    Int
+  subtotal    Int
+}
+
+/// ==========================
+/// 💳 PAYMENTS
+/// ==========================
+model Payment {
+  id            String       @id @default(uuid())
+  order         Order         @relation(fields: [orderId], references: [id])
+  orderId       String        @unique
+  method        PaymentMethod @default(CASH)
+  amount        Int
+  status        PaymentStatus @default(PENDING)
+  transactionId String?       @unique
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+/// ==========================
+/// ENUMS
+/// ==========================
+enum Role {
+  ADMIN
+  CUSTOMER
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  QRIS
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
