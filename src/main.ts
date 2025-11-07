@@ -10,6 +10,9 @@ import {
 } from '@nestjs/platform-express';
 import { Logger } from '@nestjs/common';
 
+// Swagger
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+
 // Fastify plugins
 import fastifyHelmet from '@fastify/helmet';
 import fastifyCompress from '@fastify/compress';
@@ -24,8 +27,8 @@ let cachedApp: NestFastifyApplication | NestExpressApplication;
 
 /**
  * 🚀 Bootstraps NestJS server.
- * - Fastify: local development
- * - Express: Vercel / serverless
+ * - Fastify: digunakan saat development lokal
+ * - Express: digunakan saat deploy ke Vercel (serverless)
  */
 export async function bootstrapServer(): Promise<
   NestFastifyApplication | NestExpressApplication
@@ -37,14 +40,15 @@ export async function bootstrapServer(): Promise<
     process.env.VERCEL === 'true' ||
     process.env.SERVERLESS === 'true';
 
+  // ======================================================
+  // ☁️ EXPRESS untuk Vercel / serverless mode
+  // ======================================================
   if (isServerless) {
-    // ☁️ EXPRESS for Vercel
     const expressApp = await NestFactory.create<NestExpressApplication>(
       AppModule,
       new ExpressAdapter(),
     );
 
-    // Setup middleware
     const nativeExpress = expressApp.getHttpAdapter().getInstance();
     nativeExpress.use(cors());
     nativeExpress.use(compression());
@@ -56,17 +60,36 @@ export async function bootstrapServer(): Promise<
     );
 
     expressApp.setGlobalPrefix('api');
+
+    // ✅ Swagger aktif hanya di development
+    if (process.env.NODE_ENV !== 'production') {
+      const config = new DocumentBuilder()
+        .setTitle('E-Commerce API')
+        .setDescription('Dokumentasi REST API Backend E-Commerce (Express Mode)')
+        .setVersion('1.0')
+        .addBearerAuth()
+        .build();
+
+      const document = SwaggerModule.createDocument(expressApp, config);
+      SwaggerModule.setup('api/docs', expressApp, document, {
+        swaggerOptions: { persistAuthorization: true },
+      });
+    }
+
     await expressApp.init();
     cachedApp = expressApp;
     return expressApp;
   }
 
-  // 🚀 FASTIFY for local development
+  // ======================================================
+  // 🚀 FASTIFY untuk local development
+  // ======================================================
   const fastifyApp = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter(),
   );
 
+  // Fastify middlewares
   await fastifyApp.register(fastifyHelmet, {
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
@@ -75,28 +98,46 @@ export async function bootstrapServer(): Promise<
   await fastifyApp.register(fastifyCors, { origin: true });
 
   fastifyApp.setGlobalPrefix('api');
+
+  // ✅ Swagger (Fastify)
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('E-Commerce API')
+      .setDescription('Dokumentasi REST API Backend E-Commerce (Fastify Mode)')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+
+    const document = SwaggerModule.createDocument(fastifyApp, config);
+    SwaggerModule.setup('api/docs', fastifyApp, document, {
+      swaggerOptions: { persistAuthorization: true },
+    });
+  }
+
   cachedApp = fastifyApp;
   return fastifyApp;
 }
 
 /**
- * 🧩 Local development bootstrap
+ * 🧩 Local development bootstrap (Fastify)
  */
 if (process.env.NODE_ENV !== 'production') {
   const logger = new Logger('Bootstrap');
 
   bootstrapServer()
     .then(async (app) => {
-      // Jalankan hanya jika Fastify
       const fastifyApp = app as NestFastifyApplication;
       const instance = fastifyApp.getHttpAdapter().getInstance();
 
+      await app.init();             // 🧩 Penting! inisialisasi semua controller
       await instance.ready();
       await instance.listen({ port: 3000, host: '0.0.0.0' });
 
-      logger.log('✅ Local server running at http://localhost:3000/api');
 
-      // 🛣️ Cetak daftar route
+      logger.log('✅ Local server running at http://localhost:3000/api');
+      logger.log('📘 Swagger Docs: http://localhost:3000/api/docs');
+
+      // 🛣️ Log semua route yang aktif
       console.log('\n🛣️  Registered Routes:\n');
       console.log(instance.printRoutes());
       console.log('---------------------------------------------');

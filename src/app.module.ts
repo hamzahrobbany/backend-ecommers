@@ -6,6 +6,7 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProductsModule } from './modules/products/products.module';
+import { TenantsModule } from './modules/tenants/tenants.module';
 // Tambahkan module lain sesuai kebutuhan...
 import { DebugController } from './modules/debug/debug.controller';
 
@@ -16,14 +17,19 @@ import { DebugController } from './modules/debug/debug.controller';
 
     // Module utama
     PrismaModule,
+    TenantsModule,
     AuthModule,
     ProductsModule,
   ],
   controllers: [DebugController],
 })
 export class AppModule implements NestModule {
+  constructor() {
+    console.log('🟢 AppModule Loaded!');
+    console.log('🔹 Imported Modules: PrismaModule, AuthModule, ProductsModule,TenantsModule');
+  }
+
   configure(consumer: MiddlewareConsumer) {
-    // Terapkan TenantContextMiddleware ke semua route
     consumer.apply(TenantContextMiddleware).forRoutes('*');
   }
 }

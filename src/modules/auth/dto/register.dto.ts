@@ -1,21 +1,34 @@
-import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsEmail, IsNotEmpty, MinLength, IsOptional } from 'class-validator';
+import { Role } from '@prisma/client'; // pastikan enum Role di-import
 
 export class RegisterDto {
-  @IsString()
+  @ApiProperty({ example: 'John Doe' })
+  @IsNotEmpty()
   name: string;
 
+  @ApiProperty({ example: 'user@example.com' })
   @IsEmail()
   email: string;
 
-  @IsString()
+  @ApiProperty({ example: 'password123' })
   @MinLength(6)
   password: string;
 
+  @ApiProperty({
+    example: 'CUSTOMER',
+    required: false,
+    enum: Role,
+    description: 'Peran pengguna, default CUSTOMER',
+  })
   @IsOptional()
-  @IsString()
-  role?: string;
+  role?: Role;
 
+  @ApiProperty({
+    example: 'tenant-uuid-123',
+    required: false,
+    description: 'ID tenant jika multi-tenant',
+  })
   @IsOptional()
-  @IsString()
   tenantId?: string;
 }
