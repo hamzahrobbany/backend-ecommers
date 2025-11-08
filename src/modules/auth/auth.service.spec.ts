@@ -1,159 +1,130 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { AuthService } from './auth.service';
-import { AuthRepository } from './auth.repository';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { CreateUserDto } from '../../users/dto/create-user.dto';
+import { LoginDto } from './dto/login.dto';
 import { PasswordUtil } from './utils/password.util';
 import { TokenUtil } from './utils/token.util';
-import { UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Tenant } from '../../tenants/entities/tenant.entity';
 
-describe('AuthService', () => {
-  let service: AuthService;
-  let repo: AuthRepository;
-  let jwt: JwtService;
+@Injectable()
+export class AuthService {
+  private readonly tokenUtil: TokenUtil;
 
-  const mockTenant = {
-    id: 'tenant-uuid',
-    name: 'Toko Salwa',
-    domain: 'salwa',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  const mockUser = {
-    id: 'user-uuid',
-    email: 'user@example.com',
-    name: 'User Test',
-    password: 'hashed123',
-    role: 'CUSTOMER',
-    tenantId: mockTenant.id,
-  };
-
-  const mockTokens = {
-    access_token: 'ACCESS_TOKEN',
-    refresh_token: 'REFRESH_TOKEN',
-  };
-
-  const mockRepo = {
-    findUserByEmail: jest.fn(),
-    findUserById: jest.fn(),
-    createUser: jest.fn(),
-    validateRefreshToken: jest.fn(),
-    revokeRefreshToken: jest.fn(),
-  };
-
-  const mockJwt = {
-    signAsync: jest.fn().mockResolvedValue('JWT_TOKEN'),
-  };
-
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        AuthService,
-        { provide: AuthRepository, useValue: mockRepo },
-        { provide: JwtService, useValue: mockJwt },
-      ],
-    }).compile();
-
-    service = module.get<AuthService>(AuthService);
-    repo = module.get<AuthRepository>(AuthRepository);
-    jwt = module.get<JwtService>(JwtService);
-
-    jest.clearAllMocks();
-  });
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+  ) {
+    this.tokenUtil = new TokenUtil(this.jwtService);
+  }
 
   // ===========================================================
-  // 🧩 REGISTER
+  // 🧩 REGISTER (Tenant-aware)
   // ===========================================================
-  describe('register()', () => {
-    it('✅ sukses register user baru dengan tenant', async () => {
-      mockRepo.findUserByEmail.mockResolvedValue(null);
-      mockRepo.createUser.mockResolvedValue(mockUser);
+  async register(dto: CreateUserDto, tenant: Tenant) {
+    if (!tenant?.id) {
+      throw new BadRequestException(
+        'Tenant context tidak ditemukan. Gunakan subdomain atau X-Tenant-ID header.',
+      );
+    }
 
-      jest.spyOn(PasswordUtil, 'hashPassword').mockResolvedValue('hashed123');
-      jest
-        .spyOn(TokenUtil.prototype, 'generateTokenPair')
-        .mockResolvedValue(mockTokens);
-
-      const dto = { email: 'user@example.com', name: 'User Test', password: '123456' };
-      const result = await service.register(dto as any, mockTenant.id);
-
-      expect(mockRepo.findUserByEmail).toHaveBeenCalledWith('user@example.com', mockTenant.id);
-      expect(result.user).toEqual(mockUser);
-      expect(result.tokens).toEqual(mockTokens);
+    // Cek apakah email sudah ada di tenant yang sama
+    const existing = await this.prisma.user.findFirst({
+      where: {
+        email: dto.email,
+        tenantId: tenant.id,
+      },
     });
 
-    it('❌ gagal jika tenant tidak ditemukan', async () => {
-      await expect(service.register({} as any, '' as any)).rejects.toThrow(BadRequestException);
+    if (existing) {
+      throw new BadRequestException(
+        `Email "${dto.email}" sudah terdaftar di tenant ini.`,
+      );
+    }
+
+    const hashed = await PasswordUtil.hash(dto.password);
+
+    const user = await this.prisma.user.create({
+      data: {
+        name: dto.name,
+        email: dto.email,
+        password: hashed,
+        role: dto.role ?? 'CUSTOMER',
+        tenantId: tenant.id,
+      },
     });
 
-    it('❌ gagal jika email sudah terdaftar', async () => {
-      mockRepo.findUserByEmail.mockResolvedValue(mockUser);
-      const dto = { email: mockUser.email, password: '123456' };
-      await expect(service.register(dto as any, mockTenant.id)).rejects.toThrow(UnauthorizedException);
-    });
-  });
+    const tokens = await this.tokenUtil.generateTokens(user, tenant);
+    await this.tokenUtil.saveRefreshToken(user.id, tokens.refreshToken);
 
-  // ===========================================================
-  // 🧩 LOGIN
-  // ===========================================================
-  describe('login()', () => {
-    it('✅ sukses login dengan password benar', async () => {
-      mockRepo.findUserByEmail.mockResolvedValue(mockUser);
-      jest.spyOn(PasswordUtil, 'comparePassword').mockResolvedValue(true);
-      jest
-        .spyOn(TokenUtil.prototype, 'generateTokenPair')
-        .mockResolvedValue(mockTokens);
-
-      const dto = { email: mockUser.email, password: '123456' };
-      const result = await service.login(dto as any, mockTenant.id);
-
-      expect(result.user).toEqual(mockUser);
-      expect(result.tokens).toEqual(mockTokens);
-    });
-
-    it('❌ gagal jika email tidak ditemukan', async () => {
-      mockRepo.findUserByEmail.mockResolvedValue(null);
-      await expect(service.login({ email: 'x', password: 'y' } as any, mockTenant.id)).rejects.toThrow(UnauthorizedException);
-    });
-
-    it('❌ gagal jika password salah', async () => {
-      mockRepo.findUserByEmail.mockResolvedValue(mockUser);
-      jest.spyOn(PasswordUtil, 'comparePassword').mockResolvedValue(false);
-      await expect(service.login({ email: 'x', password: 'y' } as any, mockTenant.id)).rejects.toThrow(UnauthorizedException);
-    });
-  });
+    return {
+      tenant,
+      user,
+      tokens,
+    };
+  }
 
   // ===========================================================
-  // 🧩 REFRESH TOKEN
+  // 🔐 LOGIN (Tenant-aware)
   // ===========================================================
-  describe('refresh()', () => {
-    it('✅ sukses memperbarui token', async () => {
-      mockRepo.validateRefreshToken.mockResolvedValue(true);
-      mockRepo.findUserById.mockResolvedValue(mockUser);
-      jest.spyOn(TokenUtil.prototype, 'generateTokenPair').mockResolvedValue(mockTokens);
+  async login(dto: LoginDto, tenant: Tenant) {
+    if (!tenant?.id) {
+      throw new BadRequestException('Tenant context tidak ditemukan.');
+    }
 
-      const result = await service.refresh(mockUser.id, 'REFRESH_TOKEN');
-      expect(result.tokens).toEqual(mockTokens);
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: dto.email,
+        tenantId: tenant.id,
+      },
     });
 
-    it('❌ gagal jika refresh token tidak valid', async () => {
-      mockRepo.validateRefreshToken.mockResolvedValue(false);
-      await expect(service.refresh(mockUser.id, 'REFRESH_TOKEN')).rejects.toThrow(UnauthorizedException);
-    });
-  });
+    if (!user) {
+      throw new UnauthorizedException('Email tidak ditemukan di tenant ini.');
+    }
+
+    const isMatch = await PasswordUtil.compare(dto.password, user.password);
+    if (!isMatch) {
+      throw new UnauthorizedException('Password salah.');
+    }
+
+    const tokens = await this.tokenUtil.generateTokens(user, tenant);
+    await this.tokenUtil.saveRefreshToken(user.id, tokens.refreshToken);
+
+    return { tenant, user, tokens };
+  }
 
   // ===========================================================
-  // 🧩 LOGOUT
+  // ♻️ REFRESH TOKEN
   // ===========================================================
-  describe('logout()', () => {
-    it('✅ sukses logout', async () => {
-      mockRepo.revokeRefreshToken.mockResolvedValue(undefined);
-      const result = await service.logout('TOKEN123');
-      expect(result).toEqual({ message: 'Logout berhasil' });
+  async refresh(refreshToken: string, tenant: Tenant) {
+    const payload = await this.tokenUtil.verifyRefresh(refreshToken);
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
     });
 
-    it('❌ gagal jika token kosong', async () => {
-      await expect(service.logout('')).rejects.toThrow(BadRequestException);
+    if (!user || user.tenantId !== tenant.id) {
+      throw new UnauthorizedException('Token tidak valid untuk tenant ini.');
+    }
+
+    const tokens = await this.tokenUtil.generateTokens(user, tenant);
+    await this.tokenUtil.saveRefreshToken(user.id, tokens.refreshToken);
+
+    return { tenant, user, tokens };
+  }
+
+  // ===========================================================
+  // 🚪 LOGOUT
+  // ===========================================================
+  async logout(refreshToken: string) {
+    const payload = await this.tokenUtil.verifyRefresh(refreshToken);
+    await this.prisma.refreshToken.deleteMany({
+      where: { token: refreshToken, userId: payload.sub },
     });
-  });
-});
+    return { message: 'Logout berhasil.' };
+  }
+}
