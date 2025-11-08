@@ -1,13 +1,18 @@
 import {
   Injectable,
-  NotFoundException,
   BadRequestException,
+  NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { PaginationService, PaginatedRequestDto } from '../../common/pagination';
-import * as bcrypt from 'bcryptjs';
+import {
+  PaginatedRequestDto,
+  PaginationService,
+} from '../../common/pagination';
+import { PasswordUtil } from '../auth/utils/password.util';
+import { Tenant } from '../tenants/entities/tenant.entity';
 
 @Injectable()
 export class UsersService {
@@ -17,114 +22,101 @@ export class UsersService {
   ) {}
 
   // ===========================================================
-  // 🧩 CREATE USER
+  // 🧩 CREATE USER (Tenant-Aware)
   // ===========================================================
-  async create(dto: CreateUserDto, tenantId: string) {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-
-    if (existing) {
-      throw new BadRequestException('Email sudah terdaftar');
+  async create(dto: CreateUserDto, tenant: Tenant) {
+    if (!tenant?.id) {
+      throw new BadRequestException('Tenant context tidak ditemukan.');
     }
 
-    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    // 🔹 Cek email unik per tenant
+    const existing = await this.prisma.user.findFirst({
+      where: { email: dto.email, tenantId: tenant.id },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        `Email "${dto.email}" sudah terdaftar di tenant ini.`,
+      );
+    }
 
-    return this.prisma.user.create({
+    const hashed = await PasswordUtil.hash(dto.password);
+
+    const user = await this.prisma.user.create({
       data: {
         name: dto.name,
         email: dto.email,
-        password: hashedPassword,
-        role: dto.role || 'CUSTOMER',
-        tenantId,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        tenantId: true,
-        createdAt: true,
-      },
-    });
-  }
-
-  // ===========================================================
-  // 📜 FIND ALL (Pagination + Search + Sort)
-  // ===========================================================
-  async findAll(tenantId: string, dto: PaginatedRequestDto) {
-    // Gunakan prismaPaginate helper dari PaginationService
-    return this.pagination.prismaPaginate(this.prisma.user, dto, {
-      baseQuery: {
-        where: { tenantId },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          tenantId: true,
-          createdAt: true,
-        },
-      },
-      searchFields: ['name', 'email'],
-    });
-  }
-
-  // ===========================================================
-  // 🔍 FIND USER BY ID
-  // ===========================================================
-  async findById(id: string, tenantId: string) {
-    const user = await this.prisma.user.findFirst({
-      where: { id, tenantId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        tenantId: true,
-        createdAt: true,
-        updatedAt: true,
+        password: hashed,
+        role: dto.role ?? 'CUSTOMER',
+        tenantId: tenant.id,
       },
     });
 
-    if (!user) {
-      throw new NotFoundException('User tidak ditemukan');
-    }
     return user;
   }
 
   // ===========================================================
-  // ✏️ UPDATE USER
+  // 📜 FIND ALL (Tenant-Aware + Pagination)
   // ===========================================================
-  async update(id: string, dto: UpdateUserDto, tenantId: string) {
-    await this.findById(id, tenantId);
+  async findAll(tenant: Tenant, query: PaginatedRequestDto) {
+    if (!tenant?.id) throw new ForbiddenException('Tenant tidak valid.');
 
-    const data: any = { ...dto };
+    return this.pagination.prismaPaginate(this.prisma.user, query, {
+      baseQuery: {
+        where: { tenantId: tenant.id },
+        orderBy: { createdAt: 'desc' },
+      },
+      searchFields: ['name', 'email', 'role'],
+    });
+  }
+
+  // ===========================================================
+  // 🔍 FIND BY ID (Tenant-Aware)
+  // ===========================================================
+  async findById(id: string, tenant: Tenant) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException(`User dengan ID ${id} tidak ditemukan.`);
+    }
+
+    if (user.tenantId !== tenant.id) {
+      throw new ForbiddenException('Akses ke user dari tenant lain tidak diizinkan.');
+    }
+
+    return user;
+  }
+
+  // ===========================================================
+  // 🧱 UPDATE USER
+  // ===========================================================
+  async update(id: string, dto: UpdateUserDto, tenant: Tenant) {
+    const user = await this.findById(id, tenant);
+
+    // 🔹 Validasi email unik jika diubah
+    if (dto.email && dto.email !== user.email) {
+      const existing = await this.prisma.user.findFirst({
+        where: { email: dto.email, tenantId: tenant.id },
+      });
+      if (existing) {
+        throw new BadRequestException('Email sudah digunakan di tenant ini.');
+      }
+    }
+
+    let data: any = { ...dto };
     if (dto.password) {
-      data.password = await bcrypt.hash(dto.password, 10);
+      data.password = await PasswordUtil.hash(dto.password);
     }
 
     return this.prisma.user.update({
       where: { id },
       data,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        tenantId: true,
-        createdAt: true,
-        updatedAt: true,
-      },
     });
   }
 
   // ===========================================================
-  // ❌ DELETE USER
+  // 🗑️ DELETE USER
   // ===========================================================
-  async remove(id: string, tenantId: string) {
-    const user = await this.findById(id, tenantId);
-    await this.prisma.user.delete({ where: { id } });
-    return { message: `User "${user.email}" berhasil dihapus.` };
+  async remove(id: string, tenant: Tenant) {
+    await this.findById(id, tenant);
+    return this.prisma.user.delete({ where: { id } });
   }
 }
