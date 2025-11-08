@@ -22,8 +22,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  async validate(payload: JwtPayload): Promise<JwtPayload> {
-    if (!payload?.tenantId) {
+  validate(payload: JwtPayload): JwtPayload {
+    if (!payload?.tenantId || !payload?.tenantCode) {
       throw new UnauthorizedException('Tenant context missing in token');
     }
 

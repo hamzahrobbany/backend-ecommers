@@ -1,15 +1,26 @@
 import {
+  BadRequestException,
   Injectable,
   UnauthorizedException,
-  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AuthRepository } from './auth.repository';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { PasswordUtil } from './utils/password.util';
 import { TokenUtil } from './utils/token.util';
+import { TokenResponse } from './interfaces/token-response.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+
+type NullableTenant = TenantContext | null | undefined;
+
+interface TenantContext {
+  id: string;
+  name?: string | null;
+  domain?: string | null;
+  code?: string | null;
+}
 
 @Injectable()
 export class AuthService {
@@ -19,118 +30,174 @@ export class AuthService {
     private readonly authRepo: AuthRepository,
     private readonly jwtService: JwtService,
   ) {
-    this.tokenUtil = new TokenUtil(this.jwtService);
+    this.tokenUtil = new TokenUtil(this.jwtService, this.authRepo);
   }
 
-  // ===========================================================
-  // 🧩 REGISTER (Tenant-aware)
-  // ===========================================================
-  async register(dto: RegisterDto, tenantId: string) {
-    if (!tenantId) {
-      throw new BadRequestException('Tenant context tidak ditemukan');
+  async register(dto: RegisterDto, tenant: NullableTenant) {
+    const activeTenant = this.ensureTenant(tenant);
+
+    const existing = await this.authRepo.findUserByEmail(dto.email, activeTenant.id);
+    if (existing) {
+      throw new BadRequestException('Email sudah terdaftar di tenant ini.');
     }
 
-    // ✅ Cek apakah email sudah terdaftar di tenant yang sama
-    const exists = await this.authRepo.findUserByEmail(dto.email, tenantId);
-    if (exists) {
-      throw new UnauthorizedException('Email sudah terdaftar di tenant ini');
-    }
+    const hashedPassword = await PasswordUtil.hash(dto.password);
 
-    // 🔐 Hash password
-    const hashed = await PasswordUtil.hashPassword(dto.password);
-
-    // 🧩 Buat user baru di tenant
     const user = await this.authRepo.createUser({
       ...dto,
-      password: hashed,
-      tenantId,
+      password: hashedPassword,
+      tenantId: activeTenant.id,
     });
 
-    // 🎟️ Buat payload JWT
-    return this.buildAuthResult(user);
+    const tokens = await this.issueTokens(user, activeTenant);
+
+    return this.buildAuthResponse(user, activeTenant, tokens);
   }
 
-  // ===========================================================
-  // 🧩 LOGIN
-  // ===========================================================
-  async login(dto: LoginDto, tenantId: string) {
-    if (!tenantId) {
-      throw new BadRequestException('Tenant context tidak ditemukan');
-    }
+  async login(dto: LoginDto, tenant: NullableTenant) {
+    const activeTenant = this.ensureTenant(tenant);
 
-    const user = await this.authRepo.findUserByEmail(dto.email, tenantId);
+    const user = await this.authRepo.findUserByEmail(dto.email, activeTenant.id);
     if (!user) {
-      throw new UnauthorizedException('Email tidak ditemukan di tenant ini');
+      throw new UnauthorizedException('Email tidak ditemukan di tenant ini.');
     }
 
-    const valid = await PasswordUtil.comparePassword(dto.password, user.password);
-    if (!valid) throw new UnauthorizedException('Password salah');
-
-    return this.buildAuthResult(user);
-  }
-
-  // ===========================================================
-  // 🧩 REFRESH TOKEN
-  // ===========================================================
-  async refresh(userId: string, refreshToken: string) {
-    const valid = await this.authRepo.validateRefreshToken(userId, refreshToken);
-    if (!valid) throw new UnauthorizedException('Refresh token tidak valid');
-
-    const user = await this.authRepo.findUserById(userId);
-    if (!user) throw new UnauthorizedException('User tidak ditemukan');
-
-    return this.buildAuthResult(user);
-  }
-
-  // ===========================================================
-  // 🧩 LOGOUT
-  // ===========================================================
-  async logout(token: string) {
-    if (!token) {
-      throw new BadRequestException('Token tidak boleh kosong');
+    const isValid = await PasswordUtil.compare(dto.password, user.password);
+    if (!isValid) {
+      throw new UnauthorizedException('Password salah.');
     }
 
-    await this.authRepo.revokeRefreshToken(token);
+    const tokens = await this.issueTokens(user, activeTenant);
+
+    return this.buildAuthResponse(user, activeTenant, tokens);
+  }
+
+  async refresh(dto: RefreshTokenDto, tenant: NullableTenant) {
+    const activeTenant = this.ensureTenant(tenant);
+    const refreshToken = dto.refreshToken;
+
+    if (!refreshToken) {
+      throw new BadRequestException('Refresh token wajib disertakan.');
+    }
+
+    const payload = await this.verifyRefreshToken(refreshToken);
+
+    if (payload.tenantId !== activeTenant.id) {
+      throw new UnauthorizedException('Refresh token tidak sesuai dengan tenant aktif.');
+    }
+
+    const storedTokenValid = await this.authRepo.validateRefreshToken(
+      payload.sub,
+      refreshToken,
+    );
+
+    if (!storedTokenValid) {
+      throw new UnauthorizedException('Refresh token tidak valid atau sudah dicabut.');
+    }
+
+    const user = await this.authRepo.findUserById(payload.sub, activeTenant.id);
+    if (!user) {
+      throw new UnauthorizedException('User tidak ditemukan untuk tenant ini.');
+    }
+
+    await this.authRepo.revokeRefreshToken(refreshToken);
+
+    const tokens = await this.issueTokens(user, activeTenant);
+
+    return this.buildAuthResponse(user, activeTenant, tokens);
+  }
+
+  async logout(refreshToken: string) {
+    if (!refreshToken) {
+      throw new BadRequestException('Refresh token wajib disertakan.');
+    }
+
+    await this.authRepo.revokeRefreshToken(refreshToken);
+
     return { message: 'Logout berhasil' };
   }
 
-  // ===========================================================
-  // 🧩 VALIDATE USER (opsional untuk guard)
-  // ===========================================================
-  async validateUser(email: string, password: string) {
-    const user = await this.authRepo.findUserByEmail(email);
-    if (!user) return null;
+  async validateUser(email: string, password: string, tenant: NullableTenant) {
+    const activeTenant = this.ensureTenant(tenant);
 
-    const isValid = await PasswordUtil.comparePassword(password, user.password);
-    return isValid ? user : null;
-  }
-
-  private buildPayload(user: { id: string; email: string; role: string; tenantId: string }): JwtPayload {
-    if (!user.tenantId) {
-      throw new BadRequestException('Tenant context tidak valid untuk user ini');
+    const user = await this.authRepo.findUserByEmail(email, activeTenant.id);
+    if (!user) {
+      return null;
     }
 
-    return {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      tenantId: user.tenantId,
-    };
-  }
+    const isValid = await PasswordUtil.compare(password, user.password);
+    if (!isValid) {
+      return null;
+    }
 
-  private sanitizeUser<T extends { password?: string | null }>(user: T): Omit<T, 'password'> {
     const { password: _password, ...safeUser } = user;
     return safeUser;
   }
 
-  private async buildAuthResult<T extends { id: string; email: string; role: string; tenantId: string; password?: string | null }>(
-    user: T,
+  private async issueTokens(
+    user: { id: string; email: string; role: string },
+    tenant: TenantContext,
   ) {
-    const payload = this.buildPayload(user);
-    const tokens = await this.tokenUtil.generateTokenPair(payload);
+    return this.tokenUtil.generateTokens(user, tenant);
+  }
+
+  private buildAuthResponse(
+    user: {
+      id: string;
+      email: string;
+      name: string;
+      role: string;
+      tenantId: string;
+      password?: string | null;
+    },
+    tenant: TenantContext,
+    tokens: TokenResponse,
+  ) {
+    const { password: _password, ...safeUser } = user;
+
     return {
-      user: this.sanitizeUser(user),
+      tenant: {
+        id: tenant.id,
+        code: this.resolveTenantCode(tenant),
+        name: tenant.name,
+      },
+      user: safeUser,
       tokens,
+    };
+  }
+
+  private async verifyRefreshToken(token: string): Promise<JwtPayload> {
+    try {
+      return await this.tokenUtil.verifyRefresh(token);
+    } catch (error) {
+      throw new UnauthorizedException('Refresh token tidak valid.');
+    }
+  }
+
+  private ensureTenant(tenant: NullableTenant): TenantContext {
+    if (!tenant?.id) {
+      throw new BadRequestException('Tenant context tidak ditemukan.');
+    }
+
+    return this.normalizeTenant(tenant as TenantContext);
+  }
+
+  private resolveTenantCode(tenant: TenantContext): string {
+    if (tenant.code && tenant.code.trim().length > 0) {
+      return tenant.code;
+    }
+
+    if (tenant.domain && tenant.domain.trim().length > 0) {
+      return tenant.domain;
+    }
+
+    return tenant.id;
+  }
+
+  private normalizeTenant(tenant: TenantContext): TenantContext {
+    return {
+      ...tenant,
+      code: tenant.code ?? tenant.domain ?? tenant.id,
     };
   }
 }

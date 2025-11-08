@@ -3,41 +3,40 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
-import { AuthRepository } from '../auth.repository';
 
 @Injectable()
 export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
-  constructor(private readonly authRepo: AuthRepository) {
+  constructor() {
+    const secret = process.env.JWT_REFRESH_SECRET;
+    if (!secret) {
+      throw new Error('JWT refresh secret tidak dikonfigurasi.');
+    }
+
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         (req: Request): string | null => {
           const authHeader = req.headers.authorization;
-          if (authHeader && authHeader.startsWith('Bearer ')) {
+          if (authHeader?.startsWith('Bearer ')) {
             return authHeader.split(' ')[1];
           }
-          if (req.body?.refresh_token) {
-            return req.body.refresh_token;
-          }
-          return null;
+
+          const refreshFromBody =
+            (req.body?.refreshToken as string | undefined) ??
+            (req.body?.refresh_token as string | undefined);
+
+          return refreshFromBody ?? null;
         },
       ]),
-      secretOrKey: process.env.JWT_REFRESH_SECRET!,  // ✅ pastikan string
+      secretOrKey: secret,
       passReqToCallback: true,
+      ignoreExpiration: false,
     });
   }
 
-  async validate(req: Request, payload: JwtPayload) {
-    const token =
-      req.body?.refresh_token ||
-      req.headers.authorization?.split(' ')[1];
-
-    if (!token) throw new UnauthorizedException('Refresh token tidak ditemukan');
-
-    const user = await this.authRepo.findUserById(payload.sub);
-    if (!user) throw new UnauthorizedException('User tidak ditemukan');
-
-    const valid = await this.authRepo.validateRefreshToken(user.id, token);
-    if (!valid) throw new UnauthorizedException('Refresh token tidak valid');
+  validate(_req: Request, payload: JwtPayload): JwtPayload {
+    if (!payload?.tenantId || !payload?.tenantCode) {
+      throw new UnauthorizedException('Tenant context tidak ditemukan pada token.');
+    }
 
     return payload;
   }

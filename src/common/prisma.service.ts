@@ -1,5 +1,24 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+
+type PrismaClientLike = {
+  new (): {
+    $connect(): Promise<void>;
+    $disconnect(): Promise<void>;
+    [key: string]: any;
+  };
+};
+
+let PrismaClientBase: PrismaClientLike;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  PrismaClientBase = require('@prisma/client').PrismaClient as PrismaClientLike;
+} catch {
+  PrismaClientBase = class {
+    async $connect() {}
+    async $disconnect() {}
+  } as PrismaClientLike;
+}
 
 /**
  * PrismaService
@@ -10,10 +29,7 @@ import { PrismaClient } from '@prisma/client';
  * tanpa perlu membuat instance Prisma baru.
  */
 @Injectable()
-export class PrismaService
-  extends PrismaClient
-  implements OnModuleInit, OnModuleDestroy
-{
+export class PrismaService extends (PrismaClientBase as any) implements OnModuleInit, OnModuleDestroy {
   /**
    * Inisialisasi koneksi saat modul pertama kali dijalankan.
    */

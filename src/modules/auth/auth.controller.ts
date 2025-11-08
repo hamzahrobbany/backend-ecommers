@@ -1,175 +1,126 @@
-import {
-  Body,
-  Controller,
-  Post,
-  Req,
-  UseGuards,
-  BadRequestException,
-} from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiBody,
-} from '@nestjs/swagger';
+import { Body, Controller, Post, Req, BadRequestException } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { JwtAccessGuard } from './guards/jwt-access.guard';
-import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
+import { LogoutDto } from './dto/logout.dto';
 
-@ApiTags('Auth') // 🔖 Tab di Swagger UI
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  // ===========================================================
-  // 🧩 REGISTER
-  // ===========================================================
   @Post('register')
-  @ApiOperation({ summary: 'Register akun baru' })
+  @ApiOperation({ summary: 'Registrasi user baru dalam tenant aktif' })
   @ApiBody({ type: RegisterDto })
   @ApiResponse({
     status: 201,
     description: 'User berhasil didaftarkan dan token dikembalikan',
     schema: {
       example: {
+        tenant: {
+          id: 'tenant-id',
+          code: 'tenant-code',
+          name: 'Toko Test',
+        },
         user: {
           id: 'uuid',
           email: 'user@example.com',
           name: 'John Doe',
-          role: 'USER',
+          role: 'CUSTOMER',
         },
         tokens: {
-          access_token: 'ACCESS_TOKEN_JWT',
-          refresh_token: 'REFRESH_TOKEN_JWT',
+          accessToken: 'ACCESS_TOKEN_JWT',
+          refreshToken: 'REFRESH_TOKEN_JWT',
         },
       },
     },
   })
   async register(@Body() dto: RegisterDto, @Req() req: Request) {
-    const tenantId = req.tenantId;
-
-    if (!tenantId) {
-      throw new BadRequestException(
-        'Tenant context tidak ditemukan. Gunakan subdomain atau login lebih dulu.',
-      );
+    if (!req.tenant) {
+      throw new BadRequestException('Tenant context tidak ditemukan.');
     }
 
-    return this.authService.register(dto, tenantId);
+    return this.authService.register(dto, req.tenant);
   }
 
-  // ===========================================================
-  // 🧩 LOGIN
-  // ===========================================================
   @Post('login')
-  @ApiOperation({ summary: 'Login dan dapatkan token JWT' })
+  @ApiOperation({ summary: 'Login tenant-aware' })
   @ApiBody({ type: LoginDto })
   @ApiResponse({
     status: 200,
     description: 'Login berhasil dan mengembalikan token JWT',
     schema: {
       example: {
+        tenant: {
+          id: 'tenant-id',
+          code: 'tenant-code',
+          name: 'Toko Test',
+        },
         user: {
           id: 'uuid',
           email: 'user@example.com',
-          role: 'USER',
+          role: 'CUSTOMER',
         },
         tokens: {
-          access_token: 'ACCESS_TOKEN_JWT',
-          refresh_token: 'ACCESS_TOKEN_JWT',
+          accessToken: 'ACCESS_TOKEN_JWT',
+          refreshToken: 'REFRESH_TOKEN_JWT',
         },
       },
     },
   })
-  @ApiResponse({
-    status: 401,
-    description: 'Email tidak ditemukan atau password salah',
-    schema: {
-      example: { statusCode: 401, message: 'Unauthorized' },
-    },
-  })
   async login(@Body() dto: LoginDto, @Req() req: Request) {
-    const tenantId = req.tenantId;
-    if (!tenantId) {
-      throw new BadRequestException(
-        'Tenant context tidak ditemukan. Pastikan permintaan berasal dari subdomain tenant.',
-      );
+    if (!req.tenant) {
+      throw new BadRequestException('Tenant context tidak ditemukan.');
     }
 
-    return this.authService.login(dto, tenantId);
+    return this.authService.login(dto, req.tenant);
   }
 
-  // ===========================================================
-  // 🧩 REFRESH TOKEN
-  // ===========================================================
-  @UseGuards(JwtRefreshGuard)
-  @ApiBearerAuth() // 🔐 header Authorization: Bearer <refresh_token>
   @Post('refresh')
-  @ApiOperation({
-    summary: 'Perbarui token JWT menggunakan refresh_token',
-    description:
-      'Gunakan refresh_token valid untuk memperbarui access_token dan refresh_token baru.',
-  })
+  @ApiOperation({ summary: 'Refresh JWT' })
   @ApiBody({ type: RefreshTokenDto })
   @ApiResponse({
     status: 200,
     description: 'Token berhasil diperbarui',
     schema: {
       example: {
+        tenant: {
+          id: 'tenant-id',
+          code: 'tenant-code',
+          name: 'Toko Test',
+        },
         user: {
           id: 'uuid',
           email: 'user@example.com',
-          role: 'USER',
+          role: 'CUSTOMER',
         },
         tokens: {
-          access_token: 'NEW_ACCESS_TOKEN',
-          refresh_token: 'NEW_REFRESH_TOKEN',
+          accessToken: 'NEW_ACCESS_TOKEN',
+          refreshToken: 'NEW_REFRESH_TOKEN',
         },
       },
     },
   })
-  async refresh(@Req() req: Request, @Body() dto: RefreshTokenDto) {
-    const userId = (req as any).user?.sub;
-    if (!userId) {
-      throw new BadRequestException('User ID tidak ditemukan di token refresh');
+  async refresh(@Body() dto: RefreshTokenDto, @Req() req: Request) {
+    if (!req.tenant) {
+      throw new BadRequestException('Tenant context tidak ditemukan.');
     }
 
-    return this.authService.refresh(userId, dto.refresh_token);
+    return this.authService.refresh(dto, req.tenant);
   }
 
-  // ===========================================================
-  // 🧩 LOGOUT
-  // ===========================================================
-  @UseGuards(JwtAccessGuard)
-  @ApiBearerAuth()
   @Post('logout')
-  @ApiOperation({
-    summary: 'Logout dan cabut refresh token',
-    description:
-      'Logout user aktif berdasarkan token Bearer di header Authorization.',
-  })
+  @ApiOperation({ summary: 'Logout & hapus token' })
+  @ApiBody({ type: LogoutDto })
   @ApiResponse({
     status: 200,
     description: 'Logout berhasil',
     schema: { example: { message: 'Logout berhasil' } },
   })
-  @ApiResponse({
-    status: 401,
-    description: 'Token tidak valid atau sudah kadaluarsa',
-    schema: {
-      example: { statusCode: 401, message: 'Unauthorized' },
-    },
-  })
-  async logout(@Req() req: Request) {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      throw new BadRequestException('Token tidak ditemukan di header Authorization');
-    }
-
-    return this.authService.logout(token);
+  async logout(@Body() dto: LogoutDto) {
+    return this.authService.logout(dto.refreshToken);
   }
 }

@@ -1,8 +1,9 @@
 export interface JwtPayload {
-  sub: string; // user ID
+  sub: string;
   email: string;
   role: string;
-  tenantId: string; // multi-tenant context
+  tenantId: string;
+  tenantCode: string;
   iat?: number;
   exp?: number;
 }
