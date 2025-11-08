@@ -165,8 +165,8 @@ model Payment {
 /// 📚 ENUMS
 /// ==========================
 enum Role {
+  OWNER
   ADMIN
-  STAFF
   CUSTOMER
 }
 

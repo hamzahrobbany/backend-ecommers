@@ -9,7 +9,6 @@ import {
   Query,
 } from '@nestjs/common';
 import { TenantsService } from './tenants.service';
-import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import {
   ApiTags,
@@ -20,6 +19,7 @@ import {
 import { PaginatedRequestDto } from '../../common/pagination/paginated-request.dto';
 import { PaginatedResponseDto } from '../../common/pagination/paginated-response.dto';
 import { TenantResponseDto } from './dto/tenant-response.dto';
+import { CreateTenantWithOwnerDto } from './dto/create-tenant-with-owner.dto';
 
 @ApiTags('Tenants')
 @Controller('tenants')
@@ -30,14 +30,15 @@ export class TenantsController {
   // 🧩 CREATE TENANT
   // ===========================================================
   @Post()
-  @ApiOperation({ summary: 'Create new tenant (store / toko)' })
+  @ApiOperation({
+    summary: 'Create new tenant and bootstrap owner account (admin only)',
+  })
   @ApiResponse({
     status: 201,
-    description: 'Tenant created successfully',
-    type: TenantResponseDto,
+    description: 'Tenant and owner created successfully',
   })
-  create(@Body() dto: CreateTenantDto) {
-    return this.tenantsService.create(dto);
+  create(@Body() dto: CreateTenantWithOwnerDto) {
+    return this.tenantsService.createTenantWithOwner(dto);
   }
 
   // ===========================================================

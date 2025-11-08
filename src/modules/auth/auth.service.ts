@@ -14,14 +14,14 @@ import { TokenResponse } from './interfaces/token-response.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { TenantsService } from '../tenants/tenants.service'; // 🧩 penting untuk mendukung tenantCode
 
-type NullableTenant = TenantContext | null | undefined;
-
 interface TenantContext {
   id: string;
   name?: string | null;
   domain?: string | null;
   code?: string | null;
 }
+
+type NullableTenant = TenantContext | null | undefined;
 
 @Injectable()
 export class AuthService {
@@ -38,58 +38,37 @@ export class AuthService {
   // ===========================================================
   // 🧩 REGISTER — Mendukung tenant dari header ATAU body
   // ===========================================================
-  async register(dto: RegisterDto, tenant: NullableTenant) {
-    let activeTenant: TenantContext | null = null;
-
-    // ✅ 1️⃣ Gunakan tenant dari middleware jika ada
-    if (tenant?.id) {
-      activeTenant = this.normalizeTenant(tenant);
-    }
-    // ✅ 2️⃣ Jika tidak ada tenant di context, cari dari tenantCode
-    else {
-      const tenantCode = dto.tenantCode?.trim();
-      if (tenantCode) {
-        const foundTenant = await this.tenantsService.findByCode(tenantCode);
-        if (foundTenant) {
-          activeTenant = {
-            id: foundTenant.id,
-            name: foundTenant.name,
-            code: foundTenant.code,
-            domain: foundTenant.domain,
-          };
-        }
-      }
+  async register(dto: RegisterDto) {
+    const tenant = await this.tenantsService.findByCode(dto.tenantCode);
+    if (!tenant) {
+      throw new BadRequestException('Tenant tidak ditemukan');
     }
 
-    // ⚠️ 3️⃣ Jika tenant tetap tidak ditemukan → error
-    if (!activeTenant || !activeTenant.id) {
-      throw new BadRequestException('Tenant context tidak ditemukan.');
+    const normalizedEmail = dto.email.toLowerCase();
+    const existingUser = await this.authRepo.findByEmail(normalizedEmail);
+    if (existingUser) {
+      throw new BadRequestException('Email sudah digunakan');
     }
 
-    // ✅ 4️⃣ Cek duplikasi email dalam tenant yang sama
-    const existing = await this.authRepo.findUserByEmail(
-      dto.email,
-      activeTenant.id,
-    );
-    if (existing) {
-      throw new BadRequestException('Email sudah terdaftar di tenant ini.');
-    }
-
-    // ✅ 5️⃣ Hash password & buat user
-    const hashedPassword = await PasswordUtil.hash(dto.password);
+    const hashed = await PasswordUtil.hash(dto.password);
 
     const user = await this.authRepo.createUser({
-      ...dto,
-      password: hashedPassword,
-      tenantId: activeTenant.id,
-      role: dto.role ?? 'CUSTOMER',
+      name: dto.name,
+      email: normalizedEmail,
+      password: hashed,
+      role: 'CUSTOMER',
+      tenantId: tenant.id,
     });
 
-    // ✅ 6️⃣ Buat token JWT
-    const tokens = await this.issueTokens(user, activeTenant);
+    const tenantContext = this.normalizeTenant({
+      id: tenant.id,
+      name: tenant.name,
+      code: tenant.code,
+      domain: (tenant as any)?.domain,
+    });
 
-    // ✅ 7️⃣ Bangun respons
-    return this.buildAuthResponse(user, activeTenant, tokens);
+    const tokens = await this.issueTokens(user, tenantContext);
+    return this.buildAuthResponse(user, tenantContext, tokens);
   }
 
   // ===========================================================

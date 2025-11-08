@@ -1,9 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({ example: 'John Doe' })
-  @IsString()
+  @IsNotEmpty()
   name: string;
 
   @ApiProperty({ example: 'user@example.com' })
@@ -11,26 +11,13 @@ export class RegisterDto {
   email: string;
 
   @ApiProperty({ example: 'password123' })
-  @IsString()
   @MinLength(6)
   password: string;
 
   @ApiProperty({
-    example: 'CUSTOMER',
-    required: false,
-    description: 'Peran pengguna, default CUSTOMER',
-  })
-  @IsOptional()
-  @IsString()
-  role?: string;
-
-  @ApiProperty({
     example: 'salwa',
-    required: false,
-    description:
-      'Kode tenant tempat user akan didaftarkan. Alternatif dari header X-Tenant-ID',
+    description: 'Kode tenant tempat user akan didaftarkan',
   })
-  @IsOptional()
-  @IsString()
-  tenantCode?: string;
+  @IsNotEmpty()
+  tenantCode: string;
 }

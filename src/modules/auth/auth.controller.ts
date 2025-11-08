@@ -13,7 +13,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Registrasi user baru dalam tenant aktif' })
+  @ApiOperation({ summary: 'Registrasi customer ke tenant yang sudah ada' })
   @ApiBody({ type: RegisterDto })
   @ApiResponse({
     status: 201,
@@ -38,8 +38,13 @@ export class AuthController {
       },
     },
   })
+<<<<<<< ours
   async register(@Body() dto: RegisterDto, @Req() req: Request) {
     return this.authService.register(dto, req.tenant);
+=======
+  async register(@Body() dto: RegisterDto) {
+    return this.authService.register(dto);
+>>>>>>> theirs
   }
 
   @Post('login')

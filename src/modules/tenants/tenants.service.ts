@@ -10,6 +10,8 @@ import {
   PaginationService,
   PaginatedRequestDto,
 } from '../../common/pagination';
+import { CreateTenantWithOwnerDto } from './dto/create-tenant-with-owner.dto';
+import { PasswordUtil } from '../auth/utils/password.util';
 
 @Injectable()
 export class TenantsService {
@@ -24,7 +26,7 @@ export class TenantsService {
   async create(dto: CreateTenantDto) {
     // 🔹 Validasi code unik
     const existingCode = await this.prisma.tenant.findUnique({
-      where: { code: dto.code },
+      where: { code: dto.code.toLowerCase() },
     });
     if (existingCode) {
       throw new BadRequestException(
@@ -44,7 +46,12 @@ export class TenantsService {
       }
     }
 
-    return await this.prisma.tenant.create({ data: dto });
+    return await this.prisma.tenant.create({
+      data: {
+        ...dto,
+        code: dto.code.toLowerCase(),
+      },
+    });
   }
 
   // ===========================================================
@@ -72,11 +79,18 @@ export class TenantsService {
   // 🔍 FIND ONE BY CODE
   // ===========================================================
   async findByCode(code: string) {
+<<<<<<< ours
     if (!code?.trim()) {
       return null;
     }
 
     return this.prisma.tenant.findUnique({ where: { code: code.trim() } });
+=======
+    if (!code) return null;
+    return this.prisma.tenant.findUnique({
+      where: { code: code.toLowerCase() },
+    });
+>>>>>>> theirs
   }
 
   // ===========================================================
@@ -135,5 +149,40 @@ export class TenantsService {
     await this.findById(id);
     await this.prisma.tenant.delete({ where: { id } });
     return { message: `Tenant dengan ID "${id}" berhasil dihapus` };
+  }
+
+  async createTenantWithOwner(dto: CreateTenantWithOwnerDto) {
+    const exists = await this.prisma.tenant.findUnique({
+      where: { code: dto.code.toLowerCase() },
+    });
+    if (exists) throw new BadRequestException('Kode tenant sudah digunakan');
+
+    const normalizedEmail = dto.ownerEmail.toLowerCase();
+    const existingOwner = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+    if (existingOwner) {
+      throw new BadRequestException('Email owner sudah digunakan');
+    }
+
+    const tenant = await this.prisma.tenant.create({
+      data: { code: dto.code.toLowerCase(), name: dto.name },
+    });
+
+    const hashedPassword = await PasswordUtil.hash(dto.ownerPassword);
+
+    const owner = await this.prisma.user.create({
+      data: {
+        name: dto.ownerName,
+        email: normalizedEmail,
+        password: hashedPassword,
+        role: 'OWNER',
+        tenantId: tenant.id,
+      },
+    });
+
+    const { password: _password, ...safeOwner } = owner;
+
+    return { tenant, owner: safeOwner };
   }
 }

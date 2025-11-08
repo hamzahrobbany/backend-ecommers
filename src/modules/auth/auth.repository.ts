@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 
-const SUPPORTED_ROLES = ['ADMIN', 'STAFF', 'CUSTOMER'] as const;
+const SUPPORTED_ROLES = ['OWNER', 'ADMIN', 'CUSTOMER'] as const;
 type Role = (typeof SUPPORTED_ROLES)[number];
 
 @Injectable()
@@ -12,7 +12,7 @@ export class AuthRepository {
   findUserByEmail(email: string, tenantId: string) {
     const prisma = this.prisma as any;
     return prisma.user.findFirst({
-      where: { email, tenantId },
+      where: { email: email.toLowerCase(), tenantId },
     });
   }
 
@@ -21,6 +21,11 @@ export class AuthRepository {
     return prisma.user.findFirst({
       where: { id, tenantId },
     });
+  }
+
+  findByEmail(email: string) {
+    const prisma = this.prisma as any;
+    return prisma.user.findUnique({ where: { email: email.toLowerCase() } });
   }
 
   async createUser(dto: RegisterDto & { password: string; tenantId: string }) {

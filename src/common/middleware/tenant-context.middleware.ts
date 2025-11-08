@@ -50,14 +50,18 @@ export class TenantContextMiddleware implements NestMiddleware {
       // ✅ 2️⃣ Ambil identifier tenant (Header > JWT > Subdomain)
       const tenantIdentifier =
         this.getTenantIdFromHeader(req) ??
+        this.normalizeIdentifier(
+          (req.user?.tenantId as string | undefined) ?? null,
+        ) ??
         this.getTenantIdFromAccessToken(req) ??
         this.getTenantDomainFromHost(req);
 
-      // ⚠️ 3️⃣ Jika tenant tidak ditemukan, skip route publik, tapi error di route tenant-aware
       if (!tenantIdentifier) {
-        this.logger.warn(`❌ Tenant context tidak ditemukan untuk ${req.url}`);
-        // Biarkan public route lewat, tapi kalau nanti butuh guard, bisa ditolak di sana
-        return next();
+        if (this.isTenantOptional(req)) {
+          return next();
+        }
+
+        throw new BadRequestException('Tenant context tidak ditemukan');
       }
 
       // ✅ 4️⃣ Resolve tenant dari DB
@@ -166,5 +170,21 @@ export class TenantContextMiddleware implements NestMiddleware {
     if (typeof value !== 'string') return null;
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private isTenantOptional(req: TenantAwareRequest): boolean {
+    const method = (req.method ?? '').toUpperCase();
+    const url = (req.url ?? '').toLowerCase();
+
+    if (method === 'POST') {
+      if (
+        url.startsWith('/auth/register') ||
+        url.startsWith('/api/auth/register')
+      ) {
+        return true;
+      }
+    }
+
+    return false;
   }
 }
