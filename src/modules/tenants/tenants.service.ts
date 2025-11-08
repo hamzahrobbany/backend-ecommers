@@ -1,4 +1,3 @@
-//src/modules/tenants/tenants.service.ts
 import {
   Injectable,
   BadRequestException,
@@ -7,11 +6,21 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import {
+  PaginationService,
+  PaginatedRequestDto,
+} from '../../common/pagination';
 
 @Injectable()
 export class TenantsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pagination: PaginationService,
+  ) {}
 
+  // ===========================================================
+  // 🧩 CREATE TENANT
+  // ===========================================================
   async create(dto: CreateTenantDto) {
     // Cek domain unik (jika ada)
     if (dto.domain) {
@@ -26,24 +35,44 @@ export class TenantsService {
     return this.prisma.tenant.create({ data: dto });
   }
 
-  async findAll() {
-    return this.prisma.tenant.findMany({
-      orderBy: { createdAt: 'desc' },
+  // ===========================================================
+  // 📜 FIND ALL (with Pagination & Search)
+  // ===========================================================
+  async findAll(dto: PaginatedRequestDto) {
+    // Menggunakan helper prismaPaginate dari PaginationService
+    return this.pagination.prismaPaginate(this.prisma.tenant, dto, {
+      baseQuery: {
+        orderBy: { createdAt: 'desc' },
+      },
+      searchFields: ['name', 'domain'],
     });
   }
 
+  // ===========================================================
+  // 🔍 FIND ONE BY ID
+  // ===========================================================
   async findById(id: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id } });
-    if (!tenant) throw new NotFoundException(`Tenant dengan ID ${id} tidak ditemukan`);
+    if (!tenant) {
+      throw new NotFoundException(`Tenant dengan ID ${id} tidak ditemukan`);
+    }
     return tenant;
   }
 
+  // ===========================================================
+  // 🔍 FIND ONE BY DOMAIN
+  // ===========================================================
   async findByDomain(domain: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { domain } });
-    if (!tenant) throw new NotFoundException(`Tenant dengan domain ${domain} tidak ditemukan`);
+    if (!tenant) {
+      throw new NotFoundException(`Tenant dengan domain ${domain} tidak ditemukan`);
+    }
     return tenant;
   }
 
+  // ===========================================================
+  // 🧱 UPDATE TENANT
+  // ===========================================================
   async update(id: string, dto: UpdateTenantDto) {
     const tenant = await this.findById(id);
 
@@ -65,6 +94,9 @@ export class TenantsService {
     });
   }
 
+  // ===========================================================
+  // 🗑️ DELETE TENANT
+  // ===========================================================
   async remove(id: string) {
     await this.findById(id);
     return this.prisma.tenant.delete({ where: { id } });

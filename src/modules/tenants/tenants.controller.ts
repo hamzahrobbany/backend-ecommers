@@ -17,11 +17,18 @@ import {
   ApiResponse,
   ApiQuery,
 } from '@nestjs/swagger';
+import {
+  PaginatedRequestDto,
+  PaginationService,
+} from '../../common/pagination';
 
 @ApiTags('Tenants')
 @Controller('tenants')
 export class TenantsController {
-  constructor(private readonly tenantsService: TenantsService) {}
+  constructor(
+    private readonly tenantsService: TenantsService,
+    private readonly paginationService: PaginationService,
+  ) {}
 
   // ===========================================================
   // 🧩 CREATE TENANT
@@ -34,10 +41,10 @@ export class TenantsController {
   }
 
   // ===========================================================
-  // 📜 LIST TENANTS (with Pagination)
+  // 📜 LIST TENANTS (with Pagination & Search)
   // ===========================================================
   @Get()
-  @ApiOperation({ summary: 'List all tenants with pagination' })
+  @ApiOperation({ summary: 'List all tenants with pagination & search' })
   @ApiQuery({
     name: 'page',
     required: false,
@@ -52,13 +59,15 @@ export class TenantsController {
     example: 10,
     description: 'Jumlah item per halaman (default: 10)',
   })
-  findAll(@Query('page') page = 1, @Query('limit') limit = 10) {
-    const parsedPage = Number(page);
-    const parsedLimit = Number(limit);
-    return this.tenantsService.findAll({
-      page: parsedPage > 0 ? parsedPage : 1,
-      limit: parsedLimit > 0 ? parsedLimit : 10,
-    });
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    example: 'kopi',
+    description: 'Kata kunci pencarian tenant berdasarkan nama / deskripsi',
+  })
+  async findAll(@Query() query: PaginatedRequestDto) {
+    return this.tenantsService.findAll(query);
   }
 
   // ===========================================================
