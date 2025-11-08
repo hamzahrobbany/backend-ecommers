@@ -47,15 +47,7 @@ export class AuthService {
     });
 
     // 🎟️ Buat payload JWT
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      tenantId,
-    };
-
-    const tokens = await this.tokenUtil.generateTokenPair(payload);
-    return { user, tokens };
+    return this.buildAuthResult(user);
   }
 
   // ===========================================================
@@ -74,15 +66,7 @@ export class AuthService {
     const valid = await PasswordUtil.comparePassword(dto.password, user.password);
     if (!valid) throw new UnauthorizedException('Password salah');
 
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      tenantId: user.tenantId,
-    };
-
-    const tokens = await this.tokenUtil.generateTokenPair(payload);
-    return { user, tokens };
+    return this.buildAuthResult(user);
   }
 
   // ===========================================================
@@ -95,15 +79,7 @@ export class AuthService {
     const user = await this.authRepo.findUserById(userId);
     if (!user) throw new UnauthorizedException('User tidak ditemukan');
 
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      tenantId: user.tenantId,
-    };
-
-    const tokens = await this.tokenUtil.generateTokenPair(payload);
-    return { user, tokens };
+    return this.buildAuthResult(user);
   }
 
   // ===========================================================
@@ -127,5 +103,34 @@ export class AuthService {
 
     const isValid = await PasswordUtil.comparePassword(password, user.password);
     return isValid ? user : null;
+  }
+
+  private buildPayload(user: { id: string; email: string; role: string; tenantId: string }): JwtPayload {
+    if (!user.tenantId) {
+      throw new BadRequestException('Tenant context tidak valid untuk user ini');
+    }
+
+    return {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      tenantId: user.tenantId,
+    };
+  }
+
+  private sanitizeUser<T extends { password?: string | null }>(user: T): Omit<T, 'password'> {
+    const { password: _password, ...safeUser } = user;
+    return safeUser;
+  }
+
+  private async buildAuthResult<T extends { id: string; email: string; role: string; tenantId: string; password?: string | null }>(
+    user: T,
+  ) {
+    const payload = this.buildPayload(user);
+    const tokens = await this.tokenUtil.generateTokenPair(payload);
+    return {
+      user: this.sanitizeUser(user),
+      tokens,
+    };
   }
 }

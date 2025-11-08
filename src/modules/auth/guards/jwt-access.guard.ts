@@ -20,7 +20,13 @@ export class JwtAccessGuard extends AuthGuard('jwt-access') {
     return super.canActivate(context);
   }
 
-  handleRequest(err: any, user: JwtPayload | false, info: any, context: ExecutionContext) {
+  handleRequest<TUser extends JwtPayload = JwtPayload>(
+    err: any,
+    user: TUser | false,
+    info: any,
+    context: ExecutionContext,
+    status?: any,
+  ): TUser {
     if (err || !user) {
       throw err || new UnauthorizedException('Token tidak valid atau sudah kadaluarsa');
     }
@@ -30,6 +36,10 @@ export class JwtAccessGuard extends AuthGuard('jwt-access') {
     }
 
     const req = context.switchToHttp().getRequest<TenantAwareRequest>();
+    if (req.tenantId && req.tenantId !== user.tenantId) {
+      throw new UnauthorizedException('Tenant context mismatch between token and request');
+    }
+
     req.tenantId = user.tenantId;
 
     return user;

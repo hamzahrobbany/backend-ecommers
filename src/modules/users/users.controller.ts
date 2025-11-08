@@ -94,14 +94,7 @@ export class UsersController {
     const tenantId = (req as any).tenantId;
     if (!tenantId) throw new BadRequestException('Tenant context missing');
 
-    return this.usersService.findAll(
-      tenantId,
-      query.page,
-      query.limit,
-      query.search,
-      query.sortBy,
-      query.sortOrder,
-    );
+    return this.usersService.findAll(tenantId, query);
   }
 
   // ===========================================================

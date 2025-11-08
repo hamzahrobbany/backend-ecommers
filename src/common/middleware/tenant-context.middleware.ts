@@ -1,10 +1,4 @@
-import {
-  Injectable,
-  NestMiddleware,
-  UnauthorizedException,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NestMiddleware, NotFoundException, Logger } from '@nestjs/common';
 import type { Request, Response, NextFunction } from 'express';
 import { verify, type JwtPayload } from 'jsonwebtoken';
 import { TenantsService } from '../../modules/tenants/tenants.service';
@@ -27,20 +21,17 @@ export class TenantContextMiddleware implements NestMiddleware {
 
   constructor(private readonly tenantsService: TenantsService) {}
 
-  // ===========================================================
-  // 🧩 Main Middleware
-  // ===========================================================
   async use(req: TenantAwareRequest, res: Response, next: NextFunction) {
+    req.tenant = req.tenant ?? null;
+    req.tenantId = req.tenantId ?? null;
+
     try {
       const tenantIdentifier =
         this.getTenantIdFromUser(req) ??
-        this.getTenantIdFromAuthorization(req) ??
+        this.getTenantIdFromAccessToken(req) ??
         this.getTenantDomainFromHost(req);
 
       if (!tenantIdentifier) {
-        // Tidak ditemukan tenant context → tetap lanjut tapi tanpa tenant
-        req.tenant = null;
-        req.tenantId = null;
         return next();
       }
 
@@ -48,36 +39,29 @@ export class TenantContextMiddleware implements NestMiddleware {
       req.tenant = tenant;
       req.tenantId = tenant.id;
 
-      // Inject tenantId ke req.user bila belum ada
-      if (req.user && !req.user['tenantId']) {
+      if (req.user) {
         req.user['tenantId'] = tenant.id;
       }
 
       this.logger.debug(
-        `✅ TenantContext resolved: ${tenant.name ?? tenant.id} (${tenant.id})`,
+        `TenantContext resolved: ${tenant.name ?? tenant.id} (${tenant.id})`,
       );
       return next();
     } catch (error) {
       this.logger.error(
-        `❌ TenantContext error: ${(error as Error).message}`,
+        `TenantContext error: ${(error as Error).message}`,
         (error as Error).stack,
       );
       return next(error);
     }
   }
 
-  // ===========================================================
-  // 🔍 1. Ambil tenant dari req.user (hasil JWT guard)
-  // ===========================================================
   private getTenantIdFromUser(req: TenantAwareRequest): string | null {
     const id = req.user?.['tenantId'] ?? req.user?.['tenant_id'];
-    return typeof id === 'string' && id.trim().length > 0 ? id : null;
+    return this.normalizeIdentifier(id);
   }
 
-  // ===========================================================
-  // 🔍 2. Ambil tenant dari JWT Authorization header
-  // ===========================================================
-  private getTenantIdFromAuthorization(req: Request): string | null {
+  private getTenantIdFromAccessToken(req: Request): string | null {
     const authHeader = req.headers['authorization'];
     if (!authHeader?.startsWith('Bearer ')) return null;
 
@@ -88,25 +72,22 @@ export class TenantContextMiddleware implements NestMiddleware {
       process.env.JWT_ACCESS_SECRET ?? process.env.JWT_SECRET ?? null;
 
     if (!secret) {
-      this.logger.warn('⚠️ JWT secret tidak dikonfigurasi');
+      this.logger.warn('JWT secret tidak dikonfigurasi');
       return null;
     }
 
     try {
       const decoded = verify(token, secret) as TenantJwtPayload;
       const tenantId = decoded.tenantId ?? decoded.tenant_id ?? null;
-      return typeof tenantId === 'string' && tenantId.trim().length > 0
-        ? tenantId
-        : null;
+      return this.normalizeIdentifier(tenantId);
     } catch (error) {
-      this.logger.warn(`⚠️ Gagal decode JWT untuk tenant: ${(error as Error).message}`);
+      this.logger.warn(
+        `Gagal memverifikasi JWT untuk tenant: ${(error as Error).message}`,
+      );
       return null;
     }
   }
 
-  // ===========================================================
-  // 🔍 3. Ambil tenant dari subdomain host
-  // ===========================================================
   private getTenantDomainFromHost(req: Request): string | null {
     const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
     const hostHeader = forwardedHost ?? req.headers.host ?? req.hostname;
@@ -134,20 +115,15 @@ export class TenantContextMiddleware implements NestMiddleware {
     return subdomain !== 'www' ? subdomain : null;
   }
 
-  // ===========================================================
-  // 🔍 Resolve Tenant by ID atau Domain
-  // ===========================================================
   private async resolveTenant(identifier: string): Promise<Tenant> {
     const normalized = identifier.trim().toLowerCase();
     if (!normalized) throw new NotFoundException('Tenant tidak ditemukan');
 
-    // Coba cari berdasarkan ID
     const tenantById = await this.tryResolve(() =>
       this.tenantsService.findById(normalized),
     );
     if (tenantById) return tenantById;
 
-    // Coba cari berdasarkan domain
     const tenantByDomain = await this.tryResolve(() =>
       this.tenantsService.findByDomain(normalized),
     );
@@ -158,9 +134,6 @@ export class TenantContextMiddleware implements NestMiddleware {
     );
   }
 
-  // ===========================================================
-  // 🧰 Helper try-catch
-  // ===========================================================
   private async tryResolve(
     resolver: () => Promise<Tenant>,
   ): Promise<Tenant | null> {
@@ -171,12 +144,15 @@ export class TenantContextMiddleware implements NestMiddleware {
     }
   }
 
-  // ===========================================================
-  // 🧰 Cek IP address agar tidak dianggap subdomain
-  // ===========================================================
   private isIpAddress(host: string): boolean {
     const ipv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
     const ipv6 = /:/;
     return ipv4.test(host) || ipv6.test(host);
+  }
+
+  private normalizeIdentifier(value?: string | null): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
   }
 }
