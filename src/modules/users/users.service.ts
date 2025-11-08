@@ -7,6 +7,8 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { Prisma, Role } from '@prisma/client';
+
 import {
   PaginatedRequestDto,
   PaginationService,
@@ -46,7 +48,7 @@ export class UsersService {
         name: dto.name,
         email: dto.email,
         password: hashed,
-        role: dto.role ?? 'CUSTOMER',
+        role: (dto.role as Role) ?? Role.CUSTOMER,
         tenantId: tenant.id,
       },
     });

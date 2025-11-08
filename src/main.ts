@@ -9,16 +9,18 @@ import {
   NestExpressApplication,
 } from '@nestjs/platform-express';
 import { Logger } from '@nestjs/common';
-
-// Swagger
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
-// Fastify plugins
+// 🧩 Middleware
+import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
+
+
+// 🌐 Fastify plugins
 import fastifyHelmet from '@fastify/helmet';
 import fastifyCompress from '@fastify/compress';
 import fastifyCors from '@fastify/cors';
 
-// Express middlewares
+// 🌐 Express middlewares
 import helmet from 'helmet';
 import compression from 'compression';
 import cors from 'cors';
@@ -27,8 +29,8 @@ let cachedApp: NestFastifyApplication | NestExpressApplication;
 
 /**
  * 🚀 Bootstraps NestJS server.
- * - Fastify: digunakan saat development lokal
- * - Express: digunakan saat deploy ke Vercel (serverless)
+ * - Fastify: untuk local dev
+ * - Express: untuk serverless (Vercel)
  */
 export async function bootstrapServer(): Promise<
   NestFastifyApplication | NestExpressApplication
@@ -41,7 +43,7 @@ export async function bootstrapServer(): Promise<
     process.env.SERVERLESS === 'true';
 
   // ======================================================
-  // ☁️ EXPRESS untuk Vercel / serverless mode
+  // ☁️ EXPRESS MODE (Vercel / Serverless)
   // ======================================================
   if (isServerless) {
     const expressApp = await NestFactory.create<NestExpressApplication>(
@@ -50,6 +52,7 @@ export async function bootstrapServer(): Promise<
     );
 
     const nativeExpress = expressApp.getHttpAdapter().getInstance();
+
     nativeExpress.use(cors());
     nativeExpress.use(compression());
     nativeExpress.use(
@@ -61,7 +64,11 @@ export async function bootstrapServer(): Promise<
 
     expressApp.setGlobalPrefix('api');
 
-    // ✅ Swagger aktif hanya di development
+    // 🧩 Aktifkan TenantContextMiddleware (Express)
+    const tenantContext = expressApp.get(TenantContextMiddleware);
+    nativeExpress.use((req, res, next) => tenantContext.use(req, res, next));
+
+    // 📘 Swagger hanya aktif di dev
     if (process.env.NODE_ENV !== 'production') {
       const config = new DocumentBuilder()
         .setTitle('E-Commerce API')
@@ -82,14 +89,14 @@ export async function bootstrapServer(): Promise<
   }
 
   // ======================================================
-  // 🚀 FASTIFY untuk local development
+  // 🚀 FASTIFY MODE (Local Development)
   // ======================================================
   const fastifyApp = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter(),
   );
 
-  // Fastify middlewares
+  // 🌐 Fastify plugins
   await fastifyApp.register(fastifyHelmet, {
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
@@ -99,7 +106,11 @@ export async function bootstrapServer(): Promise<
 
   fastifyApp.setGlobalPrefix('api');
 
-  // ✅ Swagger (Fastify)
+  // 🧩 Aktifkan TenantContextMiddleware (Fastify)
+  const tenantContext = fastifyApp.get(TenantContextMiddleware);
+  fastifyApp.use((req, res, next) => tenantContext.use(req, res, next));
+
+  // 📘 Swagger
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()
       .setTitle('E-Commerce API')
@@ -129,15 +140,12 @@ if (process.env.NODE_ENV !== 'production') {
       const fastifyApp = app as NestFastifyApplication;
       const instance = fastifyApp.getHttpAdapter().getInstance();
 
-      await app.init();             // 🧩 Penting! inisialisasi semua controller
+      await app.init();
       await instance.ready();
       await instance.listen({ port: 3000, host: '0.0.0.0' });
 
-
       logger.log('✅ Local server running at http://localhost:3000/api');
       logger.log('📘 Swagger Docs: http://localhost:3000/api/docs');
-
-      // 🛣️ Log semua route yang aktif
       console.log('\n🛣️  Registered Routes:\n');
       console.log(instance.printRoutes());
       console.log('---------------------------------------------');

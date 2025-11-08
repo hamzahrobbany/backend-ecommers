@@ -1,4 +1,12 @@
-import { Injectable, NestMiddleware, NotFoundException, Logger } from '@nestjs/common';
+//src/common/middleware/tenant-context.middleware.ts
+
+import {
+  Injectable,
+  NestMiddleware,
+  BadRequestException,
+  NotFoundException,
+  Logger,
+} from '@nestjs/common';
 import type { Request, Response, NextFunction } from 'express';
 import { verify, type JwtPayload } from 'jsonwebtoken';
 import { TenantsService } from '../../modules/tenants/tenants.service';
@@ -15,6 +23,16 @@ interface TenantJwtPayload extends JwtPayload {
   tenant_id?: string;
 }
 
+/**
+ * 🧩 TenantContextMiddleware (Full Multi-Source Resolver)
+ * ------------------------------------------------------
+ * Menentukan tenant aktif berdasarkan:
+ * 1️⃣ Header `X-Tenant-ID` → prioritas tertinggi (untuk curl/test/manual)
+ * 2️⃣ Payload JWT (tenantId / tenant_id)
+ * 3️⃣ Subdomain (contoh: salwa.mysite.com)
+ *
+ * Hasilnya disimpan ke `req.tenant` & `req.tenantId`
+ */
 @Injectable()
 export class TenantContextMiddleware implements NestMiddleware {
   private readonly logger = new Logger(TenantContextMiddleware.name);
@@ -26,39 +44,57 @@ export class TenantContextMiddleware implements NestMiddleware {
     req.tenantId = req.tenantId ?? null;
 
     try {
+      // 🔹 1. Header X-Tenant-ID
+      const headerTenantId = this.getTenantIdFromHeader(req);
+
+      // 🔹 2. JWT access token
+      const jwtTenantId = this.getTenantIdFromAccessToken(req);
+
+      // 🔹 3. Domain/Subdomain
+      const domainTenant = this.getTenantDomainFromHost(req);
+
+      // Pilih tenant identifier yang ditemukan pertama kali
       const tenantIdentifier =
-        this.getTenantIdFromUser(req) ??
-        this.getTenantIdFromAccessToken(req) ??
-        this.getTenantDomainFromHost(req);
+        headerTenantId ?? jwtTenantId ?? domainTenant ?? null;
 
       if (!tenantIdentifier) {
-        return next();
+        this.logger.warn(`❌ Tenant context tidak ditemukan untuk ${req.url}`);
+        throw new BadRequestException('Tenant context tidak ditemukan.');
       }
 
+      // 🔍 Resolve tenant detail dari database
       const tenant = await this.resolveTenant(tenantIdentifier);
+
       req.tenant = tenant;
       req.tenantId = tenant.id;
 
-      if (req.user) {
-        req.user['tenantId'] = tenant.id;
-      }
+      // Inject tenantId ke user context jika ada
+      if (req.user) req.user['tenantId'] = tenant.id;
 
       this.logger.debug(
-        `TenantContext resolved: ${tenant.name ?? tenant.id} (${tenant.id})`,
+        `🏷️ Tenant resolved: ${tenant.name ?? tenant.id} (${tenant.id})`,
       );
-      return next();
+
+      next();
     } catch (error) {
       this.logger.error(
         `TenantContext error: ${(error as Error).message}`,
         (error as Error).stack,
       );
-      return next(error);
+      next(error);
     }
   }
 
-  private getTenantIdFromUser(req: TenantAwareRequest): string | null {
-    const id = req.user?.['tenantId'] ?? req.user?.['tenant_id'];
-    return this.normalizeIdentifier(id);
+  // ===========================================================
+  // 🧩 Extractors
+  // ===========================================================
+
+  private getTenantIdFromHeader(req: TenantAwareRequest): string | null {
+    const id =
+      req.headers['x-tenant-id'] ||
+      req.headers['X-Tenant-ID'] ||
+      req.headers['X-Tenant-Id'];
+    return this.normalizeIdentifier(id as string | undefined);
   }
 
   private getTenantIdFromAccessToken(req: Request): string | null {
@@ -70,7 +106,6 @@ export class TenantContextMiddleware implements NestMiddleware {
 
     const secret =
       process.env.JWT_ACCESS_SECRET ?? process.env.JWT_SECRET ?? null;
-
     if (!secret) {
       this.logger.warn('JWT secret tidak dikonfigurasi');
       return null;
@@ -82,7 +117,7 @@ export class TenantContextMiddleware implements NestMiddleware {
       return this.normalizeIdentifier(tenantId);
     } catch (error) {
       this.logger.warn(
-        `Gagal memverifikasi JWT untuk tenant: ${(error as Error).message}`,
+        `Gagal memverifikasi JWT: ${(error as Error).message}`,
       );
       return null;
     }
@@ -110,19 +145,29 @@ export class TenantContextMiddleware implements NestMiddleware {
 
     const segments = host.split('.').filter(Boolean);
     if (segments.length < 2) return null;
-
     const subdomain = segments[0];
     return subdomain !== 'www' ? subdomain : null;
   }
 
+  // ===========================================================
+  // 🧩 Tenant Resolution
+  // ===========================================================
+
   private async resolveTenant(identifier: string): Promise<Tenant> {
     const normalized = identifier.trim().toLowerCase();
-    if (!normalized) throw new NotFoundException('Tenant tidak ditemukan');
+    if (!normalized)
+      throw new NotFoundException('Tenant tidak ditemukan (identifier kosong)');
 
+    // Cari berdasarkan ID dulu, lalu domain/code
     const tenantById = await this.tryResolve(() =>
       this.tenantsService.findById(normalized),
     );
     if (tenantById) return tenantById;
+
+    const tenantByCode = await this.tryResolve(() =>
+      this.tenantsService.findByCode(normalized),
+    );
+    if (tenantByCode) return tenantByCode;
 
     const tenantByDomain = await this.tryResolve(() =>
       this.tenantsService.findByDomain(normalized),
@@ -143,6 +188,10 @@ export class TenantContextMiddleware implements NestMiddleware {
       return null;
     }
   }
+
+  // ===========================================================
+  // 🧩 Utilities
+  // ===========================================================
 
   private isIpAddress(host: string): boolean {
     const ipv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
