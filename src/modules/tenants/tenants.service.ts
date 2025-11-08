@@ -22,29 +22,38 @@ export class TenantsService {
   // 🧩 CREATE TENANT
   // ===========================================================
   async create(dto: CreateTenantDto) {
-    // Cek domain unik (jika ada)
+    // 🔹 Validasi code unik
+    const existingCode = await this.prisma.tenant.findUnique({
+      where: { code: dto.code },
+    });
+    if (existingCode) {
+      throw new BadRequestException(
+        `Kode tenant "${dto.code}" sudah digunakan`,
+      );
+    }
+
+    // 🔹 Validasi domain unik (jika ada)
     if (dto.domain) {
-      const existing = await this.prisma.tenant.findUnique({
+      const existingDomain = await this.prisma.tenant.findUnique({
         where: { domain: dto.domain },
       });
-      if (existing) {
-        throw new BadRequestException(`Domain "${dto.domain}" sudah digunakan`);
+      if (existingDomain) {
+        throw new BadRequestException(
+          `Domain "${dto.domain}" sudah digunakan oleh tenant lain`,
+        );
       }
     }
 
-    return this.prisma.tenant.create({ data: dto });
+    return await this.prisma.tenant.create({ data: dto });
   }
 
   // ===========================================================
   // 📜 FIND ALL (with Pagination & Search)
   // ===========================================================
   async findAll(dto: PaginatedRequestDto) {
-    // Menggunakan helper prismaPaginate dari PaginationService
-    return this.pagination.prismaPaginate(this.prisma.tenant, dto, {
-      baseQuery: {
-        orderBy: { createdAt: 'desc' },
-      },
-      searchFields: ['name', 'domain'],
+    return await this.pagination.prismaPaginate(this.prisma.tenant, dto, {
+      baseQuery: { orderBy: { createdAt: 'desc' } },
+      searchFields: ['name', 'code', 'domain', 'email'],
     });
   }
 
@@ -54,7 +63,20 @@ export class TenantsService {
   async findById(id: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id } });
     if (!tenant) {
-      throw new NotFoundException(`Tenant dengan ID ${id} tidak ditemukan`);
+      throw new NotFoundException(`Tenant dengan ID "${id}" tidak ditemukan`);
+    }
+    return tenant;
+  }
+
+  // ===========================================================
+  // 🔍 FIND ONE BY CODE
+  // ===========================================================
+  async findByCode(code: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { code } });
+    if (!tenant) {
+      throw new NotFoundException(
+        `Tenant dengan kode "${code}" tidak ditemukan`,
+      );
     }
     return tenant;
   }
@@ -65,7 +87,9 @@ export class TenantsService {
   async findByDomain(domain: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { domain } });
     if (!tenant) {
-      throw new NotFoundException(`Tenant dengan domain ${domain} tidak ditemukan`);
+      throw new NotFoundException(
+        `Tenant dengan domain "${domain}" tidak ditemukan`,
+      );
     }
     return tenant;
   }
@@ -76,19 +100,31 @@ export class TenantsService {
   async update(id: string, dto: UpdateTenantDto) {
     const tenant = await this.findById(id);
 
-    // ✅ Cek domain unik hanya jika domain diubah
+    // 🔹 Cek code unik jika diubah
+    if (dto.code && dto.code !== tenant.code) {
+      const existingCode = await this.prisma.tenant.findUnique({
+        where: { code: dto.code },
+      });
+      if (existingCode) {
+        throw new BadRequestException(
+          `Kode "${dto.code}" sudah digunakan oleh tenant lain`,
+        );
+      }
+    }
+
+    // 🔹 Cek domain unik jika diubah
     if (dto.domain && dto.domain !== tenant.domain) {
-      const existing = await this.prisma.tenant.findUnique({
+      const existingDomain = await this.prisma.tenant.findUnique({
         where: { domain: dto.domain },
       });
-      if (existing) {
+      if (existingDomain) {
         throw new BadRequestException(
           `Domain "${dto.domain}" sudah digunakan oleh tenant lain`,
         );
       }
     }
 
-    return this.prisma.tenant.update({
+    return await this.prisma.tenant.update({
       where: { id },
       data: dto,
     });
@@ -99,6 +135,7 @@ export class TenantsService {
   // ===========================================================
   async remove(id: string) {
     await this.findById(id);
-    return this.prisma.tenant.delete({ where: { id } });
+    await this.prisma.tenant.delete({ where: { id } });
+    return { message: `Tenant dengan ID "${id}" berhasil dihapus` };
   }
 }

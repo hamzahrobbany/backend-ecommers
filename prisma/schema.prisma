@@ -8,12 +8,16 @@ datasource db {
 }
 
 /// ==========================
-/// 🏢 TENANT (Toko)
+/// 🏢 TENANT (Toko / Store)
 /// ==========================
 model Tenant {
   id        String   @id @default(uuid())
+  code      String   @unique
   name      String
   domain    String?  @unique
+  address   String?
+  email     String?
+  phone     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -63,13 +67,14 @@ model Product {
   id          String   @id @default(uuid())
   tenantId    String
   name        String
+  category    String?          // ✅ tambahkan field ini
   description String?
   price       Int
+  stock       Int      @default(0) // ✅ tambahkan field ini
   image       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Relasi
   tenant     Tenant      @relation(fields: [tenantId], references: [id])
   orderItems OrderItem[]
   stocks     Stock[]

@@ -17,25 +17,25 @@ import {
   ApiResponse,
   ApiQuery,
 } from '@nestjs/swagger';
-import {
-  PaginatedRequestDto,
-  PaginationService,
-} from '../../common/pagination';
+import { PaginatedRequestDto } from '../../common/pagination/paginated-request.dto';
+import { PaginatedResponseDto } from '../../common/pagination/paginated-response.dto';
+import { TenantResponseDto } from './dto/tenant-response.dto';
 
 @ApiTags('Tenants')
 @Controller('tenants')
 export class TenantsController {
-  constructor(
-    private readonly tenantsService: TenantsService,
-    private readonly paginationService: PaginationService,
-  ) {}
+  constructor(private readonly tenantsService: TenantsService) {}
 
   // ===========================================================
   // 🧩 CREATE TENANT
   // ===========================================================
   @Post()
   @ApiOperation({ summary: 'Create new tenant (store / toko)' })
-  @ApiResponse({ status: 201, description: 'Tenant created successfully' })
+  @ApiResponse({
+    status: 201,
+    description: 'Tenant created successfully',
+    type: TenantResponseDto,
+  })
   create(@Body() dto: CreateTenantDto) {
     return this.tenantsService.create(dto);
   }
@@ -75,6 +75,11 @@ export class TenantsController {
   // ===========================================================
   @Get(':id')
   @ApiOperation({ summary: 'Get tenant by ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Tenant detail retrieved successfully',
+    type: TenantResponseDto,
+  })
   findOne(@Param('id') id: string) {
     return this.tenantsService.findById(id);
   }
@@ -84,6 +89,11 @@ export class TenantsController {
   // ===========================================================
   @Patch(':id')
   @ApiOperation({ summary: 'Update tenant' })
+  @ApiResponse({
+    status: 200,
+    description: 'Tenant updated successfully',
+    type: TenantResponseDto,
+  })
   update(@Param('id') id: string, @Body() dto: UpdateTenantDto) {
     return this.tenantsService.update(id, dto);
   }
@@ -93,6 +103,7 @@ export class TenantsController {
   // ===========================================================
   @Delete(':id')
   @ApiOperation({ summary: 'Delete tenant' })
+  @ApiResponse({ status: 200, description: 'Tenant deleted successfully' })
   remove(@Param('id') id: string) {
     return this.tenantsService.remove(id);
   }
