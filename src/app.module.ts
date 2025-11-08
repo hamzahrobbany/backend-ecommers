@@ -1,4 +1,4 @@
-import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
 
@@ -24,12 +24,9 @@ import { DebugController } from './modules/debug/debug.controller';
   controllers: [DebugController],
 })
 export class AppModule implements NestModule {
-  constructor() {
-    console.log('🟢 AppModule Loaded!');
-    console.log('🔹 Imported Modules: PrismaModule, AuthModule, ProductsModule,TenantsModule');
-  }
-
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(TenantContextMiddleware).forRoutes('*');
+    consumer
+      .apply(TenantContextMiddleware)
+      .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
 }

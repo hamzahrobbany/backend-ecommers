@@ -8,6 +8,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { JwtAccessStrategy } from './strategies/jwt-access.strategy';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
+import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
   imports: [PassportModule, JwtModule.register({})],
@@ -19,6 +20,7 @@ import { LocalStrategy } from './strategies/local.strategy';
     JwtAccessStrategy,
     JwtRefreshStrategy,
     LocalStrategy,
+    JwtStrategy,
   ],
   exports: [AuthService],
 })

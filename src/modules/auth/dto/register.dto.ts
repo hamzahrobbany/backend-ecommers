@@ -24,11 +24,4 @@ export class RegisterDto {
   @IsOptional()
   role?: Role;
 
-  @ApiProperty({
-    example: 'tenant-uuid-123',
-    required: false,
-    description: 'ID tenant jika multi-tenant',
-  })
-  @IsOptional()
-  tenantId?: string;
 }

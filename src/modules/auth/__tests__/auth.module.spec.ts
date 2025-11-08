@@ -6,6 +6,8 @@ import { UnauthorizedException } from '@nestjs/common';
 import { PasswordUtil } from '../utils/password.util';
 import { TokenUtil } from '../utils/token.util';
 
+const TENANT_ID = 'T-01';
+
 describe('AuthService', () => {
   let authService: AuthService;
   let authRepo: jest.Mocked<AuthRepository>;
@@ -40,7 +42,7 @@ describe('AuthService', () => {
     // Mock TokenUtil agar tidak generate token beneran
     jest
       .spyOn(TokenUtil.prototype, 'generateTokenPair')
-      .mockResolvedValue({ accessToken: 'access', refreshToken: 'refresh' });
+      .mockResolvedValue({ access_token: 'access', refresh_token: 'refresh' } as any);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -51,7 +53,7 @@ describe('AuthService', () => {
   describe('validateUser', () => {
     it('✅ returns user if credentials valid', async () => {
       const user = { id: 1, email: 'test@test.com', password: 'hashed' };
-      authRepo.findUserByEmail.mockResolvedValue(user);
+      authRepo.findUserByEmail.mockResolvedValue(user as any);
       jest
         .spyOn(PasswordUtil, 'comparePassword')
         .mockResolvedValue(true as never);
@@ -62,14 +64,14 @@ describe('AuthService', () => {
     });
 
     it('❌ returns null if user not found', async () => {
-      authRepo.findUserByEmail.mockResolvedValue(null);
+      authRepo.findUserByEmail.mockResolvedValue(null as any);
       const result = await authService.validateUser('missing@test.com', '123');
       expect(result).toBeNull();
     });
 
     it('❌ returns null if password invalid', async () => {
       const user = { id: 1, email: 'test@test.com', password: 'hashed' };
-      authRepo.findUserByEmail.mockResolvedValue(user);
+      authRepo.findUserByEmail.mockResolvedValue(user as any);
       jest
         .spyOn(PasswordUtil, 'comparePassword')
         .mockResolvedValue(false as never);
@@ -84,10 +86,10 @@ describe('AuthService', () => {
   // ==============================
   describe('login', () => {
     it('❌ throws if email not found', async () => {
-      authRepo.findUserByEmail.mockResolvedValue(null);
+      authRepo.findUserByEmail.mockResolvedValue(null as any);
 
       await expect(
-        authService.login({ email: 'a@test.com', password: '123' } as any),
+        authService.login({ email: 'a@test.com', password: '123' } as any, TENANT_ID),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -96,13 +98,14 @@ describe('AuthService', () => {
         id: 1,
         email: 'a@test.com',
         password: 'hashed',
+        tenantId: TENANT_ID,
       } as any);
       jest
         .spyOn(PasswordUtil, 'comparePassword')
         .mockResolvedValue(false as never);
 
       await expect(
-        authService.login({ email: 'a@test.com', password: 'wrong' } as any),
+        authService.login({ email: 'a@test.com', password: 'wrong' } as any, TENANT_ID),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -112,22 +115,22 @@ describe('AuthService', () => {
         email: 'a@test.com',
         password: 'hashed',
         role: 'USER',
-        tenantId: 'T-01',
+        tenantId: TENANT_ID,
       };
-      authRepo.findUserByEmail.mockResolvedValue(user);
+      authRepo.findUserByEmail.mockResolvedValue(user as any);
       jest
         .spyOn(PasswordUtil, 'comparePassword')
         .mockResolvedValue(true as never);
 
-      const result = await authService.login({
-        email: 'a@test.com',
-        password: 'correct',
-      } as any);
+      const result = await authService.login(
+        { email: 'a@test.com', password: 'correct' } as any,
+        TENANT_ID,
+      );
 
       expect(result.user.email).toBe('a@test.com');
       expect(result.tokens).toEqual({
-        accessToken: 'access',
-        refreshToken: 'refresh',
+        access_token: 'access',
+        refresh_token: 'refresh',
       });
     });
   });
@@ -139,33 +142,33 @@ describe('AuthService', () => {
     it('❌ throws if email already exists', async () => {
       authRepo.findUserByEmail.mockResolvedValue({ id: 1 } as any);
       await expect(
-        authService.register({ email: 'a@test.com', password: '123' } as any),
+        authService.register({ email: 'a@test.com', password: '123' } as any, TENANT_ID),
       ).rejects.toThrow(UnauthorizedException);
     });
 
     it('✅ creates new user and returns tokens', async () => {
-      authRepo.findUserByEmail.mockResolvedValue(null);
+      authRepo.findUserByEmail.mockResolvedValue(null as any);
       authRepo.createUser.mockResolvedValue({
         id: 1,
         email: 'a@test.com',
         password: 'hashed',
         role: 'USER',
-        tenantId: 'T-01',
-      });
+        tenantId: TENANT_ID,
+      } as any);
 
       jest
         .spyOn(PasswordUtil, 'hashPassword')
         .mockResolvedValue('hashed' as never);
 
-      const result = await authService.register({
-        email: 'a@test.com',
-        password: '123',
-      } as any);
+      const result = await authService.register(
+        { email: 'a@test.com', password: '123' } as any,
+        TENANT_ID,
+      );
 
       expect(result.user.email).toBe('a@test.com');
       expect(result.tokens).toEqual({
-        accessToken: 'access',
-        refreshToken: 'refresh',
+        access_token: 'access',
+        refresh_token: 'refresh',
       });
     });
   });

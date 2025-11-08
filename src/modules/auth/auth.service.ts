@@ -10,7 +10,6 @@ import { RegisterDto } from './dto/register.dto';
 import { PasswordUtil } from './utils/password.util';
 import { TokenUtil } from './utils/token.util';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
-import { Tenant } from '../tenants/entities/tenant.entity';
 
 @Injectable()
 export class AuthService {
@@ -26,13 +25,13 @@ export class AuthService {
   // ===========================================================
   // 🧩 REGISTER (Tenant-aware)
   // ===========================================================
-  async register(dto: RegisterDto, tenant: Tenant) {
-    if (!tenant || !tenant.id) {
+  async register(dto: RegisterDto, tenantId: string) {
+    if (!tenantId) {
       throw new BadRequestException('Tenant context tidak ditemukan');
     }
 
     // ✅ Cek apakah email sudah terdaftar di tenant yang sama
-    const exists = await this.authRepo.findUserByEmail(dto.email, tenant.id);
+    const exists = await this.authRepo.findUserByEmail(dto.email, tenantId);
     if (exists) {
       throw new UnauthorizedException('Email sudah terdaftar di tenant ini');
     }
@@ -44,7 +43,7 @@ export class AuthService {
     const user = await this.authRepo.createUser({
       ...dto,
       password: hashed,
-      tenantId: tenant.id,
+      tenantId,
     });
 
     // 🎟️ Buat payload JWT
@@ -52,7 +51,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
-      tenantId: tenant.id,
+      tenantId,
     };
 
     const tokens = await this.tokenUtil.generateTokenPair(payload);
@@ -62,9 +61,15 @@ export class AuthService {
   // ===========================================================
   // 🧩 LOGIN
   // ===========================================================
-  async login(dto: LoginDto) {
-    const user = await this.authRepo.findUserByEmail(dto.email);
-    if (!user) throw new UnauthorizedException('Email tidak ditemukan');
+  async login(dto: LoginDto, tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException('Tenant context tidak ditemukan');
+    }
+
+    const user = await this.authRepo.findUserByEmail(dto.email, tenantId);
+    if (!user) {
+      throw new UnauthorizedException('Email tidak ditemukan di tenant ini');
+    }
 
     const valid = await PasswordUtil.comparePassword(dto.password, user.password);
     if (!valid) throw new UnauthorizedException('Password salah');

@@ -42,10 +42,16 @@ export class UsersController {
     type: UserResponseDto,
   })
   async create(@Body() dto: CreateUserDto, @Req() req: Request) {
+<<<<<<< ours
     const tenant = (req as any).tenant;
     if (!tenant) throw new BadRequestException('Tenant context missing');
 
     return this.usersService.create(dto, tenant.id);
+=======
+    const tenantId = req.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant context missing');
+    return this.usersService.create(dto, tenantId);
+>>>>>>> theirs
   }
 
   // ===========================================================
@@ -92,10 +98,24 @@ export class UsersController {
     type: PaginatedResponseDto<UserResponseDto>,
   })
   async findAll(@Req() req: Request, @Query() query: PaginatedRequestDto) {
+<<<<<<< ours
     const tenant = (req as any).tenant;
     if (!tenant) throw new BadRequestException('Tenant context missing');
 
     return this.usersService.findAll(tenant.id, query);
+=======
+    const tenantId = req.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant context missing');
+
+    return this.usersService.findAll(
+      tenantId,
+      query.page,
+      query.limit,
+      query.search,
+      query.sortBy,
+      query.sortOrder,
+    );
+>>>>>>> theirs
   }
 
   // ===========================================================
@@ -108,11 +128,21 @@ export class UsersController {
     description: 'Detail user',
     type: UserResponseDto,
   })
+<<<<<<< ours
   async findOne(@Param('id') id: string, @Req() req: Request) {
     const tenant = (req as any).tenant;
     if (!tenant) throw new BadRequestException('Tenant context missing');
 
     return this.usersService.findById(id, tenant.id);
+=======
+  async findOne(
+    @Param('id') id: string,
+    @Req() req: Request,
+  ): Promise<UserResponseDto> {
+    const tenantId = req.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant context missing');
+    return this.usersService.findById(id, tenantId);
+>>>>>>> theirs
   }
 
   // ===========================================================
@@ -129,11 +159,18 @@ export class UsersController {
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,
     @Req() req: Request,
+<<<<<<< ours
   ) {
     const tenant = (req as any).tenant;
     if (!tenant) throw new BadRequestException('Tenant context missing');
 
     return this.usersService.update(id, dto, tenant.id);
+=======
+  ): Promise<UserResponseDto> {
+    const tenantId = req.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant context missing');
+    return this.usersService.update(id, dto, tenantId);
+>>>>>>> theirs
   }
 
   // ===========================================================
@@ -147,9 +184,15 @@ export class UsersController {
     schema: { example: { message: 'User berhasil dihapus.' } },
   })
   async remove(@Param('id') id: string, @Req() req: Request) {
+<<<<<<< ours
     const tenant = (req as any).tenant;
     if (!tenant) throw new BadRequestException('Tenant context missing');
 
     return this.usersService.remove(id, tenant.id);
+=======
+    const tenantId = req.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant context missing');
+    return this.usersService.remove(id, tenantId);
+>>>>>>> theirs
   }
 }

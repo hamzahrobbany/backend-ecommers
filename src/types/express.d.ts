@@ -7,7 +7,8 @@ declare global {
        * Tenant aktif untuk request ini.
        * Diisi otomatis oleh TenantContextMiddleware.
        */
-      tenant?: Tenant;
+      tenant?: Tenant | null;
+      tenantId?: string | null;
     }
   }
 }

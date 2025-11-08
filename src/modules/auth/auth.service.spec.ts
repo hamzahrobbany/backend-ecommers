@@ -4,7 +4,6 @@ import { AuthRepository } from './auth.repository';
 import { JwtService } from '@nestjs/jwt';
 import { PasswordUtil } from './utils/password.util';
 import { TokenUtil } from './utils/token.util';
-import { Tenant } from '../tenants/entities/tenant.entity';
 import { UnauthorizedException, BadRequestException } from '@nestjs/common';
 
 describe('AuthService', () => {
@@ -12,7 +11,7 @@ describe('AuthService', () => {
   let repo: AuthRepository;
   let jwt: JwtService;
 
-  const mockTenant: Tenant = {
+  const mockTenant = {
     id: 'tenant-uuid',
     name: 'Toko Salwa',
     domain: 'salwa',
@@ -71,10 +70,12 @@ describe('AuthService', () => {
       mockRepo.createUser.mockResolvedValue(mockUser);
 
       jest.spyOn(PasswordUtil, 'hashPassword').mockResolvedValue('hashed123');
-      jest.spyOn(TokenUtil.prototype, 'generateTokenPair').mockResolvedValue(mockTokens);
+      jest
+        .spyOn(TokenUtil.prototype, 'generateTokenPair')
+        .mockResolvedValue(mockTokens);
 
       const dto = { email: 'user@example.com', name: 'User Test', password: '123456' };
-      const result = await service.register(dto as any, mockTenant);
+      const result = await service.register(dto as any, mockTenant.id);
 
       expect(mockRepo.findUserByEmail).toHaveBeenCalledWith('user@example.com', mockTenant.id);
       expect(result.user).toEqual(mockUser);
@@ -82,13 +83,13 @@ describe('AuthService', () => {
     });
 
     it('❌ gagal jika tenant tidak ditemukan', async () => {
-      await expect(service.register({} as any, null as any)).rejects.toThrow(BadRequestException);
+      await expect(service.register({} as any, '' as any)).rejects.toThrow(BadRequestException);
     });
 
     it('❌ gagal jika email sudah terdaftar', async () => {
       mockRepo.findUserByEmail.mockResolvedValue(mockUser);
       const dto = { email: mockUser.email, password: '123456' };
-      await expect(service.register(dto as any, mockTenant)).rejects.toThrow(UnauthorizedException);
+      await expect(service.register(dto as any, mockTenant.id)).rejects.toThrow(UnauthorizedException);
     });
   });
 
@@ -99,10 +100,12 @@ describe('AuthService', () => {
     it('✅ sukses login dengan password benar', async () => {
       mockRepo.findUserByEmail.mockResolvedValue(mockUser);
       jest.spyOn(PasswordUtil, 'comparePassword').mockResolvedValue(true);
-      jest.spyOn(TokenUtil.prototype, 'generateTokenPair').mockResolvedValue(mockTokens);
+      jest
+        .spyOn(TokenUtil.prototype, 'generateTokenPair')
+        .mockResolvedValue(mockTokens);
 
       const dto = { email: mockUser.email, password: '123456' };
-      const result = await service.login(dto as any);
+      const result = await service.login(dto as any, mockTenant.id);
 
       expect(result.user).toEqual(mockUser);
       expect(result.tokens).toEqual(mockTokens);
@@ -110,13 +113,13 @@ describe('AuthService', () => {
 
     it('❌ gagal jika email tidak ditemukan', async () => {
       mockRepo.findUserByEmail.mockResolvedValue(null);
-      await expect(service.login({ email: 'x', password: 'y' } as any)).rejects.toThrow(UnauthorizedException);
+      await expect(service.login({ email: 'x', password: 'y' } as any, mockTenant.id)).rejects.toThrow(UnauthorizedException);
     });
 
     it('❌ gagal jika password salah', async () => {
       mockRepo.findUserByEmail.mockResolvedValue(mockUser);
       jest.spyOn(PasswordUtil, 'comparePassword').mockResolvedValue(false);
-      await expect(service.login({ email: 'x', password: 'y' } as any)).rejects.toThrow(UnauthorizedException);
+      await expect(service.login({ email: 'x', password: 'y' } as any, mockTenant.id)).rejects.toThrow(UnauthorizedException);
     });
   });
 

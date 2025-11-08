@@ -20,7 +20,6 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtAccessGuard } from './guards/jwt-access.guard';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
-import { Tenant } from '../tenants/entities/tenant.entity';
 
 @ApiTags('Auth') // 🔖 Tab di Swagger UI
 @Controller('auth')
@@ -51,14 +50,16 @@ export class AuthController {
       },
     },
   })
-  async register(@Body() dto: RegisterDto, @Req() req: Request & { tenant?: Tenant | null }) {
-    const tenant = req.tenant;
+  async register(@Body() dto: RegisterDto, @Req() req: Request) {
+    const tenantId = req.tenantId;
 
-    if (!tenant) {
-      throw new BadRequestException('Tenant context tidak ditemukan. Pastikan header X-Tenant-ID dikirim.');
+    if (!tenantId) {
+      throw new BadRequestException(
+        'Tenant context tidak ditemukan. Gunakan subdomain atau login lebih dulu.',
+      );
     }
 
-    return this.authService.register(dto, tenant);
+    return this.authService.register(dto, tenantId);
   }
 
   // ===========================================================
@@ -79,7 +80,7 @@ export class AuthController {
         },
         tokens: {
           access_token: 'ACCESS_TOKEN_JWT',
-          refresh_token: 'REFRESH_TOKEN_JWT',
+          refresh_token: 'ACCESS_TOKEN_JWT',
         },
       },
     },
@@ -91,8 +92,15 @@ export class AuthController {
       example: { statusCode: 401, message: 'Unauthorized' },
     },
   })
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(@Body() dto: LoginDto, @Req() req: Request) {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException(
+        'Tenant context tidak ditemukan. Pastikan permintaan berasal dari subdomain tenant.',
+      );
+    }
+
+    return this.authService.login(dto, tenantId);
   }
 
   // ===========================================================
