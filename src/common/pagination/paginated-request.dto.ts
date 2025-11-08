@@ -1,54 +1,40 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
-/**
- * DTO untuk parameter query pagination, search, dan sorting.
- * Bisa digunakan di semua modul controller.
- */
 export class PaginatedRequestDto {
-  @ApiPropertyOptional({
-    description: 'Nomor halaman (default: 1)',
-    example: 1,
-  })
+  @ApiPropertyOptional({ example: 1, description: 'Nomor halaman (mulai dari 1)' })
   @Type(() => Number)
-  @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(1)
-  page: number = 1;
+  @IsOptional()
+  page?: number = 1;
 
-  @ApiPropertyOptional({
-    description: 'Jumlah item per halaman (default: 10)',
-    example: 10,
-  })
+  @ApiPropertyOptional({ example: 10, description: 'Jumlah item per halaman' })
   @Type(() => Number)
-  @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(1)
-  limit: number = 10;
-
-  @ApiPropertyOptional({
-    description: 'Kata kunci pencarian (misalnya: nama atau email)',
-    example: 'john',
-  })
   @IsOptional()
+  limit?: number = 10;
+
+  @ApiPropertyOptional({ example: 'kopi', description: 'Kata kunci pencarian opsional' })
   @IsString()
+  @IsOptional()
   search?: string;
 
   @ApiPropertyOptional({
-    description: 'Kolom untuk sortir (contoh: name, email, createdAt)',
     example: 'createdAt',
+    description: 'Kolom yang dipakai untuk sorting (default: createdAt)',
   })
-  @IsOptional()
   @IsString()
+  @IsOptional()
   sortBy?: string = 'createdAt';
 
   @ApiPropertyOptional({
-    description: 'Urutan sortir: asc / desc (default: desc)',
-    enum: ['asc', 'desc'],
     example: 'desc',
+    description: 'Arah sorting, bisa "asc" atau "desc" (default: desc)',
   })
+  @IsIn(['asc', 'desc'])
   @IsOptional()
-  @IsEnum(['asc', 'desc'])
-  sortOrder: 'asc' | 'desc' = 'desc';
+  sortOrder?: 'asc' | 'desc' = 'desc';
 }
