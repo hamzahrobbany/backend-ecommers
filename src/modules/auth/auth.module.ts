@@ -12,7 +12,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { TenantsModule } from '../tenants/tenants.module';
 
 @Module({
-  imports: [PassportModule, JwtModule.register({})],
+  imports: [PassportModule, JwtModule.register({}), TenantsModule],
   controllers: [AuthController],
   providers: [
     AuthService,
@@ -22,7 +22,6 @@ import { TenantsModule } from '../tenants/tenants.module';
     JwtRefreshStrategy,
     LocalStrategy,
     JwtStrategy,
-    TenantsModule,
   ],
   exports: [AuthService],
 })

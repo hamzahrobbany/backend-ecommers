@@ -39,10 +39,6 @@ export class AuthController {
     },
   })
   async register(@Body() dto: RegisterDto, @Req() req: Request) {
-    if (!req.tenant) {
-      throw new BadRequestException('Tenant context tidak ditemukan.');
-    }
-
     return this.authService.register(dto, req.tenant);
   }
 

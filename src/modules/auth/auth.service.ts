@@ -46,15 +46,18 @@ export class AuthService {
       activeTenant = this.normalizeTenant(tenant);
     }
     // ✅ 2️⃣ Jika tidak ada tenant di context, cari dari tenantCode
-    else if (dto.tenantCode) {
-      const foundTenant = await this.tenantsService.findByCode(dto.tenantCode);
-      if (foundTenant) {
-        activeTenant = {
-          id: foundTenant.id,
-          name: foundTenant.name,
-          code: foundTenant.code,
-          domain: foundTenant.domain,
-        };
+    else {
+      const tenantCode = dto.tenantCode?.trim();
+      if (tenantCode) {
+        const foundTenant = await this.tenantsService.findByCode(tenantCode);
+        if (foundTenant) {
+          activeTenant = {
+            id: foundTenant.id,
+            name: foundTenant.name,
+            code: foundTenant.code,
+            domain: foundTenant.domain,
+          };
+        }
       }
     }
 
