@@ -1,10 +1,8 @@
-//src/common/middleware/tenant-context.middleware.ts
-
 import {
   Injectable,
   NestMiddleware,
-  BadRequestException,
   NotFoundException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import type { Request, Response, NextFunction } from 'express';
@@ -23,16 +21,6 @@ interface TenantJwtPayload extends JwtPayload {
   tenant_id?: string;
 }
 
-/**
- * 🧩 TenantContextMiddleware (Full Multi-Source Resolver)
- * ------------------------------------------------------
- * Menentukan tenant aktif berdasarkan:
- * 1️⃣ Header `X-Tenant-ID` → prioritas tertinggi (untuk curl/test/manual)
- * 2️⃣ Payload JWT (tenantId / tenant_id)
- * 3️⃣ Subdomain (contoh: salwa.mysite.com)
- *
- * Hasilnya disimpan ke `req.tenant` & `req.tenantId`
- */
 @Injectable()
 export class TenantContextMiddleware implements NestMiddleware {
   private readonly logger = new Logger(TenantContextMiddleware.name);
@@ -40,41 +28,47 @@ export class TenantContextMiddleware implements NestMiddleware {
   constructor(private readonly tenantsService: TenantsService) {}
 
   async use(req: TenantAwareRequest, res: Response, next: NextFunction) {
+    const url = req.url ?? '';
+
+    // ✅ 1️⃣ Abaikan permintaan non-API publik (Swagger, favicon, file statis)
+    if (
+      url.startsWith('/api/docs') ||
+      url.startsWith('/api-json') ||
+      url.includes('swagger-ui') ||
+      url.startsWith('/favicon') ||
+      url.includes('.js') ||
+      url.includes('.css') ||
+      url.includes('.map')
+    ) {
+      return next();
+    }
+
     req.tenant = req.tenant ?? null;
     req.tenantId = req.tenantId ?? null;
 
     try {
-      // 🔹 1. Header X-Tenant-ID
-      const headerTenantId = this.getTenantIdFromHeader(req);
-
-      // 🔹 2. JWT access token
-      const jwtTenantId = this.getTenantIdFromAccessToken(req);
-
-      // 🔹 3. Domain/Subdomain
-      const domainTenant = this.getTenantDomainFromHost(req);
-
-      // Pilih tenant identifier yang ditemukan pertama kali
+      // ✅ 2️⃣ Ambil identifier tenant (Header > JWT > Subdomain)
       const tenantIdentifier =
-        headerTenantId ?? jwtTenantId ?? domainTenant ?? null;
+        this.getTenantIdFromHeader(req) ??
+        this.getTenantIdFromAccessToken(req) ??
+        this.getTenantDomainFromHost(req);
 
+      // ⚠️ 3️⃣ Jika tenant tidak ditemukan, skip route publik, tapi error di route tenant-aware
       if (!tenantIdentifier) {
         this.logger.warn(`❌ Tenant context tidak ditemukan untuk ${req.url}`);
-        throw new BadRequestException('Tenant context tidak ditemukan.');
+        // Biarkan public route lewat, tapi kalau nanti butuh guard, bisa ditolak di sana
+        return next();
       }
 
-      // 🔍 Resolve tenant detail dari database
+      // ✅ 4️⃣ Resolve tenant dari DB
       const tenant = await this.resolveTenant(tenantIdentifier);
-
       req.tenant = tenant;
       req.tenantId = tenant.id;
-
-      // Inject tenantId ke user context jika ada
       if (req.user) req.user['tenantId'] = tenant.id;
 
       this.logger.debug(
-        `🏷️ Tenant resolved: ${tenant.name ?? tenant.id} (${tenant.id})`,
+        `🏷️ TenantContext resolved: ${tenant.name ?? tenant.id} (${tenant.id})`,
       );
-
       next();
     } catch (error) {
       this.logger.error(
@@ -85,16 +79,13 @@ export class TenantContextMiddleware implements NestMiddleware {
     }
   }
 
-  // ===========================================================
-  // 🧩 Extractors
-  // ===========================================================
-
   private getTenantIdFromHeader(req: TenantAwareRequest): string | null {
-    const id =
-      req.headers['x-tenant-id'] ||
-      req.headers['X-Tenant-ID'] ||
-      req.headers['X-Tenant-Id'];
-    return this.normalizeIdentifier(id as string | undefined);
+    const header =
+      req.headers['x-tenant-id'] ??
+      req.headers['X-Tenant-ID'] ??
+      req.headers['x-tenant'] ??
+      req.headers['tenant'];
+    return this.normalizeIdentifier(header as string);
   }
 
   private getTenantIdFromAccessToken(req: Request): string | null {
@@ -113,8 +104,7 @@ export class TenantContextMiddleware implements NestMiddleware {
 
     try {
       const decoded = verify(token, secret) as TenantJwtPayload;
-      const tenantId = decoded.tenantId ?? decoded.tenant_id ?? null;
-      return this.normalizeIdentifier(tenantId);
+      return this.normalizeIdentifier(decoded.tenantId ?? decoded.tenant_id);
     } catch (error) {
       this.logger.warn(
         `Gagal memverifikasi JWT: ${(error as Error).message}`,
@@ -132,56 +122,34 @@ export class TenantContextMiddleware implements NestMiddleware {
     if (this.isIpAddress(host)) return null;
 
     const baseDomain = process.env.MULTITENANT_BASE_DOMAIN?.toLowerCase();
-    if (baseDomain && baseDomain.length > 0) {
-      if (host === baseDomain) return null;
-      if (host.endsWith(`.${baseDomain}`)) {
-        const sub = host.replace(`.${baseDomain}`, '');
-        const parts = sub.split('.').filter(Boolean);
-        const candidate = parts[parts.length - 1];
-        return candidate && candidate !== 'www' ? candidate : null;
-      }
-      return null;
+    if (baseDomain && host.endsWith(`.${baseDomain}`)) {
+      const sub = host.replace(`.${baseDomain}`, '');
+      const parts = sub.split('.').filter(Boolean);
+      return parts[parts.length - 1] !== 'www' ? parts[parts.length - 1] : null;
     }
 
     const segments = host.split('.').filter(Boolean);
-    if (segments.length < 2) return null;
-    const subdomain = segments[0];
-    return subdomain !== 'www' ? subdomain : null;
+    return segments.length > 2 && segments[0] !== 'www'
+      ? segments[0]
+      : null;
   }
-
-  // ===========================================================
-  // 🧩 Tenant Resolution
-  // ===========================================================
 
   private async resolveTenant(identifier: string): Promise<Tenant> {
     const normalized = identifier.trim().toLowerCase();
-    if (!normalized)
-      throw new NotFoundException('Tenant tidak ditemukan (identifier kosong)');
-
-    // Cari berdasarkan ID dulu, lalu domain/code
     const tenantById = await this.tryResolve(() =>
       this.tenantsService.findById(normalized),
     );
     if (tenantById) return tenantById;
-
-    const tenantByCode = await this.tryResolve(() =>
-      this.tenantsService.findByCode(normalized),
-    );
-    if (tenantByCode) return tenantByCode;
 
     const tenantByDomain = await this.tryResolve(() =>
       this.tenantsService.findByDomain(normalized),
     );
     if (tenantByDomain) return tenantByDomain;
 
-    throw new NotFoundException(
-      `Tenant tidak ditemukan untuk identifier "${identifier}"`,
-    );
+    throw new NotFoundException(`Tenant tidak ditemukan: ${identifier}`);
   }
 
-  private async tryResolve(
-    resolver: () => Promise<Tenant>,
-  ): Promise<Tenant | null> {
+  private async tryResolve(resolver: () => Promise<Tenant>): Promise<Tenant | null> {
     try {
       return await resolver();
     } catch {
@@ -189,14 +157,9 @@ export class TenantContextMiddleware implements NestMiddleware {
     }
   }
 
-  // ===========================================================
-  // 🧩 Utilities
-  // ===========================================================
-
   private isIpAddress(host: string): boolean {
     const ipv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
-    const ipv6 = /:/;
-    return ipv4.test(host) || ipv6.test(host);
+    return ipv4.test(host) || host.includes(':');
   }
 
   private normalizeIdentifier(value?: string | null): string | null {

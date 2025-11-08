@@ -12,6 +12,7 @@ import { PasswordUtil } from './utils/password.util';
 import { TokenUtil } from './utils/token.util';
 import { TokenResponse } from './interfaces/token-response.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { TenantsService } from '../tenants/tenants.service'; // 🧩 penting untuk mendukung tenantCode
 
 type NullableTenant = TenantContext | null | undefined;
 
@@ -28,32 +29,69 @@ export class AuthService {
 
   constructor(
     private readonly authRepo: AuthRepository,
+    private readonly tenantsService: TenantsService, // 🧩 tambahkan ini
     private readonly jwtService: JwtService,
   ) {
     this.tokenUtil = new TokenUtil(this.jwtService, this.authRepo);
   }
 
+  // ===========================================================
+  // 🧩 REGISTER — Mendukung tenant dari header ATAU body
+  // ===========================================================
   async register(dto: RegisterDto, tenant: NullableTenant) {
-    const activeTenant = this.ensureTenant(tenant);
+    let activeTenant: TenantContext | null = null;
 
-    const existing = await this.authRepo.findUserByEmail(dto.email, activeTenant.id);
+    // ✅ 1️⃣ Gunakan tenant dari middleware jika ada
+    if (tenant?.id) {
+      activeTenant = this.normalizeTenant(tenant);
+    }
+    // ✅ 2️⃣ Jika tidak ada tenant di context, cari dari tenantCode
+    else if (dto.tenantCode) {
+      const foundTenant = await this.tenantsService.findByCode(dto.tenantCode);
+      if (foundTenant) {
+        activeTenant = {
+          id: foundTenant.id,
+          name: foundTenant.name,
+          code: foundTenant.code,
+          domain: foundTenant.domain,
+        };
+      }
+    }
+
+    // ⚠️ 3️⃣ Jika tenant tetap tidak ditemukan → error
+    if (!activeTenant || !activeTenant.id) {
+      throw new BadRequestException('Tenant context tidak ditemukan.');
+    }
+
+    // ✅ 4️⃣ Cek duplikasi email dalam tenant yang sama
+    const existing = await this.authRepo.findUserByEmail(
+      dto.email,
+      activeTenant.id,
+    );
     if (existing) {
       throw new BadRequestException('Email sudah terdaftar di tenant ini.');
     }
 
+    // ✅ 5️⃣ Hash password & buat user
     const hashedPassword = await PasswordUtil.hash(dto.password);
 
     const user = await this.authRepo.createUser({
       ...dto,
       password: hashedPassword,
       tenantId: activeTenant.id,
+      role: dto.role ?? 'CUSTOMER',
     });
 
+    // ✅ 6️⃣ Buat token JWT
     const tokens = await this.issueTokens(user, activeTenant);
 
+    // ✅ 7️⃣ Bangun respons
     return this.buildAuthResponse(user, activeTenant, tokens);
   }
 
+  // ===========================================================
+  // 🧩 LOGIN
+  // ===========================================================
   async login(dto: LoginDto, tenant: NullableTenant) {
     const activeTenant = this.ensureTenant(tenant);
 
@@ -68,10 +106,12 @@ export class AuthService {
     }
 
     const tokens = await this.issueTokens(user, activeTenant);
-
     return this.buildAuthResponse(user, activeTenant, tokens);
   }
 
+  // ===========================================================
+  // 🧩 REFRESH TOKEN
+  // ===========================================================
   async refresh(dto: RefreshTokenDto, tenant: NullableTenant) {
     const activeTenant = this.ensureTenant(tenant);
     const refreshToken = dto.refreshToken;
@@ -90,7 +130,6 @@ export class AuthService {
       payload.sub,
       refreshToken,
     );
-
     if (!storedTokenValid) {
       throw new UnauthorizedException('Refresh token tidak valid atau sudah dicabut.');
     }
@@ -103,37 +142,39 @@ export class AuthService {
     await this.authRepo.revokeRefreshToken(refreshToken);
 
     const tokens = await this.issueTokens(user, activeTenant);
-
     return this.buildAuthResponse(user, activeTenant, tokens);
   }
 
+  // ===========================================================
+  // 🧩 LOGOUT
+  // ===========================================================
   async logout(refreshToken: string) {
     if (!refreshToken) {
       throw new BadRequestException('Refresh token wajib disertakan.');
     }
-
     await this.authRepo.revokeRefreshToken(refreshToken);
-
     return { message: 'Logout berhasil' };
   }
 
+  // ===========================================================
+  // 🧩 VALIDASI USER (untuk guard)
+  // ===========================================================
   async validateUser(email: string, password: string, tenant: NullableTenant) {
     const activeTenant = this.ensureTenant(tenant);
 
     const user = await this.authRepo.findUserByEmail(email, activeTenant.id);
-    if (!user) {
-      return null;
-    }
+    if (!user) return null;
 
     const isValid = await PasswordUtil.compare(password, user.password);
-    if (!isValid) {
-      return null;
-    }
+    if (!isValid) return null;
 
     const { password: _password, ...safeUser } = user;
     return safeUser;
   }
 
+  // ===========================================================
+  // 🔐 UTILITAS INTERNAL
+  // ===========================================================
   private async issueTokens(
     user: { id: string; email: string; role: string },
     tenant: TenantContext,
@@ -154,7 +195,6 @@ export class AuthService {
     tokens: TokenResponse,
   ) {
     const { password: _password, ...safeUser } = user;
-
     return {
       tenant: {
         id: tenant.id,
@@ -169,7 +209,7 @@ export class AuthService {
   private async verifyRefreshToken(token: string): Promise<JwtPayload> {
     try {
       return await this.tokenUtil.verifyRefresh(token);
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException('Refresh token tidak valid.');
     }
   }
@@ -178,20 +218,11 @@ export class AuthService {
     if (!tenant?.id) {
       throw new BadRequestException('Tenant context tidak ditemukan.');
     }
-
     return this.normalizeTenant(tenant as TenantContext);
   }
 
   private resolveTenantCode(tenant: TenantContext): string {
-    if (tenant.code && tenant.code.trim().length > 0) {
-      return tenant.code;
-    }
-
-    if (tenant.domain && tenant.domain.trim().length > 0) {
-      return tenant.domain;
-    }
-
-    return tenant.id;
+    return tenant.code?.trim() || tenant.domain?.trim() || tenant.id;
   }
 
   private normalizeTenant(tenant: TenantContext): TenantContext {

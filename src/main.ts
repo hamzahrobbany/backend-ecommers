@@ -66,7 +66,10 @@ export async function bootstrapServer(): Promise<
 
     // 🧩 Aktifkan TenantContextMiddleware (Express)
     const tenantContext = expressApp.get(TenantContextMiddleware);
-    nativeExpress.use((req, res, next) => tenantContext.use(req, res, next));
+    // EXPRESS
+nativeExpress.use((req, res, next) =>
+  (tenantContext as any).use(req as any, res, next),
+);
 
     // 📘 Swagger hanya aktif di dev
     if (process.env.NODE_ENV !== 'production') {

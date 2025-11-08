@@ -23,4 +23,14 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   role?: string;
+
+  @ApiProperty({
+    example: 'salwa',
+    required: false,
+    description:
+      'Kode tenant tempat user akan didaftarkan. Alternatif dari header X-Tenant-ID',
+  })
+  @IsOptional()
+  @IsString()
+  tenantCode?: string;
 }

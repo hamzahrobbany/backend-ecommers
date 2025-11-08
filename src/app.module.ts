@@ -1,9 +1,8 @@
-import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
 // === Core Middleware ===
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
-
 
 // === Core Modules ===
 import { PrismaModule } from './prisma/prisma.module';
@@ -11,28 +10,32 @@ import { TenantsModule } from './modules/tenants/tenants.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProductsModule } from './modules/products/products.module';
 
-// === Optional/Utility Modules ===
+// === Optional/Utility ===
 import { DebugController } from './modules/debug/debug.controller';
 
 @Module({
   imports: [
-    // 🌱 Global environment variables (.env)
     ConfigModule.forRoot({ isGlobal: true }),
-
-    // 🧩 Core business modules
     PrismaModule,
     TenantsModule,
     AuthModule,
     ProductsModule,
   ],
   controllers: [DebugController],
-
-  // 🧠 Penting agar Nest dapat meng‐inject TenantsService ke middleware
   providers: [TenantContextMiddleware],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    // 🧩 Terapkan TenantContextMiddleware untuk semua route
-    consumer.apply(TenantContextMiddleware).forRoutes('*');
+    consumer
+      .apply(TenantContextMiddleware)
+      .exclude(
+        { path: 'api/docs', method: RequestMethod.ALL },
+        { path: 'api/docs/*', method: RequestMethod.ALL },
+        { path: 'api-json', method: RequestMethod.ALL },
+        { path: 'swagger-ui', method: RequestMethod.ALL },
+        { path: 'swagger-ui/*', method: RequestMethod.ALL },
+        { path: 'favicon.ico', method: RequestMethod.ALL },
+      )
+      .forRoutes('*');
   }
 }
