@@ -13,6 +13,7 @@ import { TokenUtil } from './utils/token.util';
 import { TokenResponse } from './interfaces/token-response.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { TenantsService } from '../tenants/tenants.service'; // 🧩 penting untuk mendukung tenantCode
+import { Tenant } from '../tenants/entities/tenant.entity';
 
 interface TenantContext {
   id: string;
@@ -74,8 +75,17 @@ export class AuthService {
   // ===========================================================
   // 🧩 LOGIN
   // ===========================================================
-  async login(dto: LoginDto, tenant: NullableTenant) {
-    const activeTenant = this.ensureTenant(tenant);
+  async login(dto: LoginDto, tenant: Tenant) {
+    if (!tenant?.id) {
+      throw new BadRequestException('Tenant context tidak ditemukan.');
+    }
+
+    const activeTenant = this.normalizeTenant({
+      id: tenant.id,
+      name: tenant.name,
+      code: tenant.code,
+      domain: tenant.domain,
+    });
 
     const user = await this.authRepo.findUserByEmail(dto.email, activeTenant.id);
     if (!user) {

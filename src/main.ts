@@ -75,7 +75,9 @@ export async function bootstrapServer(): Promise<
         url.includes('/api-json') ||
         url.startsWith('/favicon') ||
         url.startsWith('/auth/login') ||
+        url.startsWith('/api/auth/login') ||
         url.startsWith('/auth/register') ||
+        url.startsWith('/api/auth/register') ||
         url.startsWith('/tenants');
 
       if (isPublic) return next();
@@ -97,7 +99,8 @@ export async function bootstrapServer(): Promise<
           ? (builder as any).addApiHeader({
               name: 'X-Tenant-ID',
               required: false,
-              description: 'Tenant UUID (untuk multi-tenant context)',
+              description:
+                'Tenant UUID atau kode tenant aktif (opsional, bisa digantikan tenantCode di body)',
             })
           : builder;
 
@@ -162,7 +165,9 @@ export async function bootstrapServer(): Promise<
       url.includes('/api-json') ||
       url.startsWith('/favicon') ||
       url.startsWith('/auth/login') ||
+      url.startsWith('/api/auth/login') ||
       url.startsWith('/auth/register') ||
+      url.startsWith('/api/auth/register') ||
       url.startsWith('/tenants');
 
     if (isPublic) return next();
@@ -183,7 +188,8 @@ export async function bootstrapServer(): Promise<
         ? (builder as any).addApiHeader({
             name: 'X-Tenant-ID',
             required: false,
-            description: 'Tenant UUID (untuk multi-tenant context)',
+            description:
+              'Tenant UUID atau kode tenant aktif (opsional, bisa digantikan tenantCode di body)',
           })
         : builder;
 

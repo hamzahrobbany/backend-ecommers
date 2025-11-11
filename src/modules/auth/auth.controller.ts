@@ -1,16 +1,32 @@
-import { Body, Controller, Post, Req, BadRequestException } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  NotFoundException,
+  Post,
+  Req,
+} from '@nestjs/common';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
+import { TenantsService } from '../tenants/tenants.service';
+import { Tenant } from '../tenants/entities/tenant.entity';
+
+interface TenantAwareRequest extends Request {
+  tenant?: Tenant | null;
+}
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly tenantsService: TenantsService,
+  ) {}
 
   @Post('register')
   @ApiOperation({ summary: 'Registrasi customer ke tenant yang sudah ada' })
@@ -68,11 +84,29 @@ export class AuthController {
     },
   })
   async login(@Body() dto: LoginDto, @Req() req: Request) {
-    if (!req.tenant) {
+    const request = req as TenantAwareRequest;
+    let tenant = request.tenant ?? null;
+
+    if (!tenant && dto.tenantCode) {
+      try {
+        tenant = await this.tenantsService.findByCode(dto.tenantCode);
+      } catch (error) {
+        if (
+          error instanceof NotFoundException ||
+          error instanceof BadRequestException
+        ) {
+          throw new BadRequestException('Tenant context tidak ditemukan.');
+        }
+        throw error;
+      }
+    }
+
+    if (!tenant) {
       throw new BadRequestException('Tenant context tidak ditemukan.');
     }
 
-    return this.authService.login(dto, req.tenant);
+    request.tenant = tenant;
+    return this.authService.login(dto, tenant);
   }
 
   @Post('refresh')
@@ -101,11 +135,12 @@ export class AuthController {
     },
   })
   async refresh(@Body() dto: RefreshTokenDto, @Req() req: Request) {
-    if (!req.tenant) {
+    const request = req as TenantAwareRequest;
+    if (!request.tenant) {
       throw new BadRequestException('Tenant context tidak ditemukan.');
     }
 
-    return this.authService.refresh(dto, req.tenant);
+    return this.authService.refresh(dto, request.tenant);
   }
 
   @Post('logout')

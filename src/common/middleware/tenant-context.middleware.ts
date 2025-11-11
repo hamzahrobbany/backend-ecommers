@@ -108,7 +108,9 @@ export class TenantContextMiddleware implements NestMiddleware {
   private getTenantIdFromHeader(req: TenantAwareRequest): string | null {
     const header =
       req.headers['x-tenant-id'] ??
+      req.headers['x-tenant-code'] ??
       req.headers['X-Tenant-ID'] ??
+      req.headers['X-Tenant-Code'] ??
       req.headers['x-tenant'] ??
       req.headers['tenant'];
     return this.normalizeIdentifier(header as string);
@@ -172,6 +174,11 @@ export class TenantContextMiddleware implements NestMiddleware {
     );
     if (tenantByDomain) return tenantByDomain;
 
+    const tenantByCode = await this.tryResolve(() =>
+      this.tenantsService.findByCode(normalized),
+    );
+    if (tenantByCode) return tenantByCode;
+
     throw new NotFoundException(`Tenant tidak ditemukan: ${identifier}`);
   }
 
@@ -223,7 +230,14 @@ export class TenantContextMiddleware implements NestMiddleware {
     if (!method) return false;
 
     const optionalPrefixes: Record<string, string[]> = {
-      POST: ['/auth/register', '/api/auth/register', '/tenants', '/api/tenants'],
+      POST: [
+        '/auth/register',
+        '/api/auth/register',
+        '/auth/login',
+        '/api/auth/login',
+        '/tenants',
+        '/api/tenants',
+      ],
       GET: ['/tenants', '/api/tenants'],
     };
 
