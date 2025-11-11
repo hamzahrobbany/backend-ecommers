@@ -7,21 +7,14 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { Prisma, Role } from '@prisma/client';
+import { Role } from '@prisma/client';
 
-import {
-  PaginatedRequestDto,
-  PaginationService,
-} from '../../common/pagination';
 import { PasswordUtil } from '../auth/utils/password.util';
 import { Tenant } from '../tenants/entities/tenant.entity';
 
 @Injectable()
 export class UsersService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly pagination: PaginationService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   // ===========================================================
   // 🧩 CREATE USER (Tenant-Aware)
@@ -57,17 +50,14 @@ export class UsersService {
   }
 
   // ===========================================================
-  // 📜 FIND ALL (Tenant-Aware + Pagination)
+  // 📜 FIND ALL (Tenant-Aware)
   // ===========================================================
-  async findAll(tenant: Tenant, query: PaginatedRequestDto) {
+  async findAll(tenant: Tenant) {
     if (!tenant?.id) throw new ForbiddenException('Tenant tidak valid.');
 
-    return this.pagination.prismaPaginate(this.prisma.user, query, {
-      baseQuery: {
-        where: { tenantId: tenant.id },
-        orderBy: { createdAt: 'desc' },
-      },
-      searchFields: ['name', 'email', 'role'],
+    return this.prisma.user.findMany({
+      where: { tenantId: tenant.id },
+      orderBy: { createdAt: 'desc' },
     });
   }
 

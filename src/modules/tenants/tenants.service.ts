@@ -6,19 +6,12 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
-import {
-  PaginationService,
-  PaginatedRequestDto,
-} from '../../common/pagination';
 import { CreateTenantWithOwnerDto } from './dto/create-tenant-with-owner.dto';
 import { PasswordUtil } from '../auth/utils/password.util';
 
 @Injectable()
 export class TenantsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly pagination: PaginationService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   // ===========================================================
   // 🧩 CREATE TENANT
@@ -36,12 +29,11 @@ export class TenantsService {
   }
 
   // ===========================================================
-  // 📜 FIND ALL (Pagination & Search)
+  // 📜 FIND ALL
   // ===========================================================
-  async findAll(dto: PaginatedRequestDto) {
-    return this.pagination.prismaPaginate(this.prisma.tenant, dto, {
-      baseQuery: { orderBy: { createdAt: 'desc' } },
-      searchFields: ['name', 'code', 'domain', 'email'],
+  async findAll() {
+    return this.prisma.tenant.findMany({
+      orderBy: { createdAt: 'desc' },
     });
   }
 

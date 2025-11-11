@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Req,
-  Query,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -16,9 +15,7 @@ import {
   ApiTags,
   ApiOperation,
   ApiResponse,
-  ApiQuery,
 } from '@nestjs/swagger';
-import { PaginatedRequestDto } from '../../common/pagination';
 import { UserResponseDto } from './dto/user-response.dto';
 
 @ApiTags('Users')
@@ -37,12 +34,13 @@ export class UsersController {
   }
 
   // ===========================================================
-  // 📜 LIST USERS (with Pagination)
+  // 📜 LIST USERS
   // ===========================================================
   @Get()
-  @ApiOperation({ summary: 'Daftar user untuk tenant aktif (pagination + search)' })
-  async findAll(@Query() query: PaginatedRequestDto, @Req() req: any) {
-    return this.usersService.findAll(req.tenant, query);
+  @ApiOperation({ summary: 'Daftar user untuk tenant aktif' })
+  @ApiResponse({ status: 200, type: [UserResponseDto] })
+  async findAll(@Req() req: any) {
+    return this.usersService.findAll(req.tenant);
   }
 
   // ===========================================================

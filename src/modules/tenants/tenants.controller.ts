@@ -6,7 +6,6 @@ import {
   Param,
   Patch,
   Delete,
-  Query,
 } from '@nestjs/common';
 import { TenantsService } from './tenants.service';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
@@ -14,10 +13,7 @@ import {
   ApiTags,
   ApiOperation,
   ApiResponse,
-  ApiQuery,
 } from '@nestjs/swagger';
-import { PaginatedRequestDto } from '../../common/pagination/paginated-request.dto';
-import { PaginatedResponseDto } from '../../common/pagination/paginated-response.dto';
 import { TenantResponseDto } from './dto/tenant-response.dto';
 import { CreateTenantWithOwnerDto } from './dto/create-tenant-with-owner.dto';
 
@@ -42,33 +38,13 @@ export class TenantsController {
   }
 
   // ===========================================================
-  // 📜 LIST TENANTS (with Pagination & Search)
+  // 📜 LIST TENANTS
   // ===========================================================
   @Get()
-  @ApiOperation({ summary: 'List all tenants with pagination & search' })
-  @ApiQuery({
-    name: 'page',
-    required: false,
-    type: Number,
-    example: 1,
-    description: 'Nomor halaman (default: 1)',
-  })
-  @ApiQuery({
-    name: 'limit',
-    required: false,
-    type: Number,
-    example: 10,
-    description: 'Jumlah item per halaman (default: 10)',
-  })
-  @ApiQuery({
-    name: 'search',
-    required: false,
-    type: String,
-    example: 'kopi',
-    description: 'Kata kunci pencarian tenant berdasarkan nama / deskripsi',
-  })
-  async findAll(@Query() query: PaginatedRequestDto) {
-    return this.tenantsService.findAll(query);
+  @ApiOperation({ summary: 'List all tenants' })
+  @ApiResponse({ status: 200, type: [TenantResponseDto] })
+  async findAll() {
+    return this.tenantsService.findAll();
   }
 
   // ===========================================================
