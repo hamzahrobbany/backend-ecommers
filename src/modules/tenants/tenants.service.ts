@@ -24,41 +24,22 @@ export class TenantsService {
   // 🧩 CREATE TENANT
   // ===========================================================
   async create(dto: CreateTenantDto) {
-    // 🔹 Validasi code unik
-    const existingCode = await this.prisma.tenant.findUnique({
-      where: { code: dto.code.toLowerCase() },
-    });
-    if (existingCode) {
-      throw new BadRequestException(
-        `Kode tenant "${dto.code}" sudah digunakan`,
-      );
-    }
+    const code = dto.code.toLowerCase().trim();
+    const domain = dto.domain?.toLowerCase().trim() ?? null;
 
-    // 🔹 Validasi domain unik (jika ada)
-    if (dto.domain) {
-      const existingDomain = await this.prisma.tenant.findUnique({
-        where: { domain: dto.domain },
-      });
-      if (existingDomain) {
-        throw new BadRequestException(
-          `Domain "${dto.domain}" sudah digunakan oleh tenant lain`,
-        );
-      }
-    }
+    // 🔹 Validasi unik code & domain
+    await this.ensureUniqueFields(code, domain);
 
-    return await this.prisma.tenant.create({
-      data: {
-        ...dto,
-        code: dto.code.toLowerCase(),
-      },
+    return this.prisma.tenant.create({
+      data: { ...dto, code, domain },
     });
   }
 
   // ===========================================================
-  // 📜 FIND ALL (with Pagination & Search)
+  // 📜 FIND ALL (Pagination & Search)
   // ===========================================================
   async findAll(dto: PaginatedRequestDto) {
-    return await this.pagination.prismaPaginate(this.prisma.tenant, dto, {
+    return this.pagination.prismaPaginate(this.prisma.tenant, dto, {
       baseQuery: { orderBy: { createdAt: 'desc' } },
       searchFields: ['name', 'code', 'domain', 'email'],
     });
@@ -69,9 +50,8 @@ export class TenantsService {
   // ===========================================================
   async findById(id: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id } });
-    if (!tenant) {
+    if (!tenant)
       throw new NotFoundException(`Tenant dengan ID "${id}" tidak ditemukan`);
-    }
     return tenant;
   }
 
@@ -79,22 +59,27 @@ export class TenantsService {
   // 🔍 FIND ONE BY CODE
   // ===========================================================
   async findByCode(code: string) {
-    if (!code) return null;
-    return this.prisma.tenant.findUnique({
-      where: { code: code.toLowerCase() },
+    if (!code) throw new BadRequestException('Kode tenant wajib diisi');
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { code: code.toLowerCase().trim() },
     });
+    if (!tenant)
+      throw new NotFoundException(`Tenant dengan kode "${code}" tidak ditemukan`);
+    return tenant;
   }
 
   // ===========================================================
   // 🔍 FIND ONE BY DOMAIN
   // ===========================================================
   async findByDomain(domain: string) {
-    const tenant = await this.prisma.tenant.findUnique({ where: { domain } });
-    if (!tenant) {
+    if (!domain) throw new BadRequestException('Domain wajib diisi');
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { domain: domain.toLowerCase().trim() },
+    });
+    if (!tenant)
       throw new NotFoundException(
         `Tenant dengan domain "${domain}" tidak ditemukan`,
       );
-    }
     return tenant;
   }
 
@@ -104,33 +89,21 @@ export class TenantsService {
   async update(id: string, dto: UpdateTenantDto) {
     const tenant = await this.findById(id);
 
-    // 🔹 Cek code unik jika diubah
-    if (dto.code && dto.code !== tenant.code) {
-      const existingCode = await this.prisma.tenant.findUnique({
-        where: { code: dto.code },
-      });
-      if (existingCode) {
-        throw new BadRequestException(
-          `Kode "${dto.code}" sudah digunakan oleh tenant lain`,
-        );
-      }
+    const newCode = dto.code?.toLowerCase().trim();
+    const newDomain = dto.domain?.toLowerCase().trim();
+
+    // 🔹 Validasi unik jika diubah
+    if (newCode && newCode !== tenant.code) {
+      await this.ensureCodeUnique(newCode, id);
     }
 
-    // 🔹 Cek domain unik jika diubah
-    if (dto.domain && dto.domain !== tenant.domain) {
-      const existingDomain = await this.prisma.tenant.findUnique({
-        where: { domain: dto.domain },
-      });
-      if (existingDomain) {
-        throw new BadRequestException(
-          `Domain "${dto.domain}" sudah digunakan oleh tenant lain`,
-        );
-      }
+    if (newDomain && newDomain !== tenant.domain) {
+      await this.ensureDomainUnique(newDomain, id);
     }
 
-    return await this.prisma.tenant.update({
+    return this.prisma.tenant.update({
       where: { id },
-      data: dto,
+      data: { ...dto, code: newCode ?? tenant.code, domain: newDomain ?? tenant.domain },
     });
   }
 
@@ -143,38 +116,73 @@ export class TenantsService {
     return { message: `Tenant dengan ID "${id}" berhasil dihapus` };
   }
 
+  // ===========================================================
+  // 🧩 CREATE TENANT + OWNER
+  // ===========================================================
   async createTenantWithOwner(dto: CreateTenantWithOwnerDto) {
-    const exists = await this.prisma.tenant.findUnique({
-      where: { code: dto.code.toLowerCase() },
-    });
-    if (exists) throw new BadRequestException('Kode tenant sudah digunakan');
+    const code = dto.code.toLowerCase().trim();
+    const email = dto.ownerEmail.toLowerCase().trim();
 
-    const normalizedEmail = dto.ownerEmail.toLowerCase();
+    // 🔹 Cek kode tenant
+    const existingTenant = await this.prisma.tenant.findUnique({
+      where: { code },
+    });
+    if (existingTenant)
+      throw new BadRequestException(`Kode tenant "${code}" sudah digunakan`);
+
+    // 🔹 Cek email owner
     const existingOwner = await this.prisma.user.findUnique({
-      where: { email: normalizedEmail },
+      where: { email },
     });
-    if (existingOwner) {
-      throw new BadRequestException('Email owner sudah digunakan');
-    }
+    if (existingOwner)
+      throw new BadRequestException(`Email "${email}" sudah digunakan`);
 
+    // 🔹 Buat tenant
     const tenant = await this.prisma.tenant.create({
-      data: { code: dto.code.toLowerCase(), name: dto.name },
+      data: {
+        code,
+        name: dto.name,
+        domain: dto.domain?.toLowerCase().trim() ?? code,
+      },
     });
 
+    // 🔹 Hash password owner
     const hashedPassword = await PasswordUtil.hash(dto.ownerPassword);
 
+    // 🔹 Buat user owner
     const owner = await this.prisma.user.create({
       data: {
         name: dto.ownerName,
-        email: normalizedEmail,
+        email,
         password: hashedPassword,
         role: 'OWNER',
         tenantId: tenant.id,
       },
     });
 
-    const { password: _password, ...safeOwner } = owner;
-
+    const { password: _pwd, ...safeOwner } = owner;
     return { tenant, owner: safeOwner };
+  }
+
+  // ===========================================================
+  // 🧩 INTERNAL HELPERS
+  // ===========================================================
+  private async ensureUniqueFields(code: string, domain: string | null) {
+    if (code) await this.ensureCodeUnique(code);
+    if (domain) await this.ensureDomainUnique(domain);
+  }
+
+  private async ensureCodeUnique(code: string, excludeId?: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { code } });
+    if (tenant && tenant.id !== excludeId) {
+      throw new BadRequestException(`Kode "${code}" sudah digunakan`);
+    }
+  }
+
+  private async ensureDomainUnique(domain: string, excludeId?: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { domain } });
+    if (tenant && tenant.id !== excludeId) {
+      throw new BadRequestException(`Domain "${domain}" sudah digunakan`);
+    }
   }
 }

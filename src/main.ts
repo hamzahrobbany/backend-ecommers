@@ -8,12 +8,15 @@ import {
   ExpressAdapter,
   NestExpressApplication,
 } from '@nestjs/platform-express';
-import { Logger } from '@nestjs/common';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { Logger, RequestMethod } from '@nestjs/common';
+import {
+  SwaggerModule,
+  DocumentBuilder,
+  SwaggerCustomOptions,
+} from '@nestjs/swagger';
 
 // 🧩 Middleware
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
-
 
 // 🌐 Fastify plugins
 import fastifyHelmet from '@fastify/helmet';
@@ -25,13 +28,15 @@ import helmet from 'helmet';
 import compression from 'compression';
 import cors from 'cors';
 
+// 📘 Swagger Plugins
+import {
+  swaggerAuthPlugin,
+  swaggerRequestInterceptor,
+  swaggerAuthStorageInstructions,
+} from './common/swagger/swagger-auth.plugin';
+
 let cachedApp: NestFastifyApplication | NestExpressApplication;
 
-/**
- * 🚀 Bootstraps NestJS server.
- * - Fastify: untuk local dev
- * - Express: untuk serverless (Vercel)
- */
 export async function bootstrapServer(): Promise<
   NestFastifyApplication | NestExpressApplication
 > {
@@ -64,14 +69,27 @@ export async function bootstrapServer(): Promise<
 
     expressApp.setGlobalPrefix('api');
 
-    // 🧩 Aktifkan TenantContextMiddleware (Express)
-    const tenantContext = expressApp.get(TenantContextMiddleware);
-    // EXPRESS
-nativeExpress.use((req, res, next) =>
-  (tenantContext as any).use(req as any, res, next),
-);
+    // 🧩 Apply TenantContextMiddleware but exclude public routes
+    expressApp.use((req, res, next) => {
+      const url = req.url.toLowerCase();
+      const method = req.method.toUpperCase();
 
-    // 📘 Swagger hanya aktif di dev
+      const isPublic =
+        url.startsWith('/api/docs') ||
+        url.startsWith('/api-json') ||
+        url.startsWith('/swagger-ui') ||
+        url.startsWith('/favicon') ||
+        url.startsWith('/auth/login') ||
+        url.startsWith('/auth/register') ||
+        url.startsWith('/tenants');
+
+      if (isPublic) return next();
+
+      const tenantContext = expressApp.get(TenantContextMiddleware);
+      (tenantContext as any).use(req as any, res, next);
+    });
+
+    // 📘 Swagger hanya aktif di development
     if (process.env.NODE_ENV !== 'production') {
       const config = new DocumentBuilder()
         .setTitle('E-Commerce API')
@@ -81,9 +99,20 @@ nativeExpress.use((req, res, next) =>
         .build();
 
       const document = SwaggerModule.createDocument(expressApp, config);
-      SwaggerModule.setup('api/docs', expressApp, document, {
-        swaggerOptions: { persistAuthorization: true },
-      });
+      const swaggerOptions: SwaggerCustomOptions = {
+        swaggerOptions: {
+          persistAuthorization: true,
+          plugins: [swaggerAuthPlugin()],
+          requestInterceptor: swaggerRequestInterceptor,
+        },
+        customJs: `
+          console.log('%c🚀 Swagger Auto Auth Enabled', 'color: #4CAF50; font-weight: bold;');
+          console.log(\`${swaggerAuthStorageInstructions}\`);
+        `,
+      };
+
+      SwaggerModule.setup('api/docs', expressApp, document, swaggerOptions);
+      Logger.log(`\n${swaggerAuthStorageInstructions}`, 'Swagger');
     }
 
     await expressApp.init();
@@ -99,7 +128,6 @@ nativeExpress.use((req, res, next) =>
     new FastifyAdapter(),
   );
 
-  // 🌐 Fastify plugins
   await fastifyApp.register(fastifyHelmet, {
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
@@ -109,9 +137,25 @@ nativeExpress.use((req, res, next) =>
 
   fastifyApp.setGlobalPrefix('api');
 
-  // 🧩 Aktifkan TenantContextMiddleware (Fastify)
+  // 🧩 TenantContextMiddleware (Fastify) — exclude public routes
   const tenantContext = fastifyApp.get(TenantContextMiddleware);
-  fastifyApp.use((req, res, next) => tenantContext.use(req, res, next));
+  fastifyApp.use((req, res, next) => {
+    const url = req.url.toLowerCase();
+    const method = req.method.toUpperCase();
+
+    const isPublic =
+      url.startsWith('/api/docs') ||
+      url.startsWith('/api-json') ||
+      url.startsWith('/swagger-ui') ||
+      url.startsWith('/favicon') ||
+      url.startsWith('/auth/login') ||
+      url.startsWith('/auth/register') ||
+      url.startsWith('/tenants');
+
+    if (isPublic) return next();
+
+    (tenantContext as any).use(req as any, res, next);
+  });
 
   // 📘 Swagger
   if (process.env.NODE_ENV !== 'production') {
@@ -123,9 +167,20 @@ nativeExpress.use((req, res, next) =>
       .build();
 
     const document = SwaggerModule.createDocument(fastifyApp, config);
-    SwaggerModule.setup('api/docs', fastifyApp, document, {
-      swaggerOptions: { persistAuthorization: true },
-    });
+    const swaggerOptions: SwaggerCustomOptions = {
+      swaggerOptions: {
+        persistAuthorization: true,
+        plugins: [swaggerAuthPlugin()],
+        requestInterceptor: swaggerRequestInterceptor,
+      },
+      customJs: `
+        console.log('%c🚀 Swagger Auto Auth Enabled', 'color: #4CAF50; font-weight: bold;');
+        console.log(\`${swaggerAuthStorageInstructions}\`);
+      `,
+    };
+
+    SwaggerModule.setup('api/docs', fastifyApp, document, swaggerOptions);
+    Logger.log(`\n${swaggerAuthStorageInstructions}`, 'Swagger');
   }
 
   cachedApp = fastifyApp;
@@ -133,7 +188,7 @@ nativeExpress.use((req, res, next) =>
 }
 
 /**
- * 🧩 Local development bootstrap (Fastify)
+ * 🧩 Local Development Entry Point (Fastify)
  */
 if (process.env.NODE_ENV !== 'production') {
   const logger = new Logger('Bootstrap');

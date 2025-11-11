@@ -39,7 +39,7 @@ export class TenantContextMiddleware implements NestMiddleware {
     req.tenantId = req.tenantId ?? null;
 
     try {
-      const tenantIdentifier =
+      let tenantIdentifier =
         this.getTenantIdFromHeader(req) ??
         this.normalizeIdentifier(
           (req.user?.tenantId as string | undefined) ?? null,
@@ -47,11 +47,27 @@ export class TenantContextMiddleware implements NestMiddleware {
         this.getTenantIdFromAccessToken(req) ??
         this.getTenantDomainFromHost(req);
 
+      // 🧩 Debug log semua sumber tenant ID
+      this.logger.debug('🧩 Tenant Context Debug', {
+        fromHeader: this.getTenantIdFromHeader(req),
+        fromUser: req.user?.tenantId,
+        fromAccessToken: this.getTenantIdFromAccessToken(req),
+        fromHost: this.getTenantDomainFromHost(req),
+        resolved: tenantIdentifier,
+      });
+
+      // ⚙️ DEV FALLBACK TENANT (aktif hanya saat development)
+      if (!tenantIdentifier && process.env.NODE_ENV === 'development') {
+        tenantIdentifier = 'salwa'; // fallback tenant code
+        this.logger.warn(
+          '⚠️ [Dev Fallback] Tenant header tidak ditemukan — memakai tenant default: salwa',
+        );
+      }
+
       if (!tenantIdentifier) {
         if (this.isTenantOptional(req, normalizedUrl)) {
           return next();
         }
-
         throw new BadRequestException('Tenant context tidak ditemukan');
       }
 
@@ -61,7 +77,7 @@ export class TenantContextMiddleware implements NestMiddleware {
       if (req.user) req.user['tenantId'] = tenant.id;
 
       this.logger.debug(
-        `??? TenantContext resolved: ${tenant.name ?? tenant.id} (${tenant.id})`,
+        `✅ TenantContext resolved: ${tenant.name ?? tenant.id} (${tenant.id})`,
       );
       next();
     } catch (error) {
@@ -72,6 +88,10 @@ export class TenantContextMiddleware implements NestMiddleware {
       next(error);
     }
   }
+
+  // ===========================================================
+  // 🧩 Fungsi pembantu lainnya (tidak berubah)
+  // ===========================================================
 
   private shouldBypassPublicRoute(url: string): boolean {
     return (
@@ -155,7 +175,9 @@ export class TenantContextMiddleware implements NestMiddleware {
     throw new NotFoundException(`Tenant tidak ditemukan: ${identifier}`);
   }
 
-  private async tryResolve(resolver: () => Promise<Tenant>): Promise<Tenant | null> {
+  private async tryResolve(
+    resolver: () => Promise<Tenant>,
+  ): Promise<Tenant | null> {
     try {
       return await resolver();
     } catch {
@@ -178,12 +200,12 @@ export class TenantContextMiddleware implements NestMiddleware {
     const originalUrl =
       (req as any).originalUrl ??
       req.url ??
-      (typeof (req as any).raw?.url === 'string' ? (req as any).raw.url : '') ??
+      (typeof (req as any).raw?.url === 'string'
+        ? (req as any).raw.url
+        : '') ??
       '';
 
-    if (!originalUrl) {
-      return '/';
-    }
+    if (!originalUrl) return '/';
 
     if (originalUrl.startsWith('http://') || originalUrl.startsWith('https://')) {
       try {
@@ -208,6 +230,8 @@ export class TenantContextMiddleware implements NestMiddleware {
     const prefixes = optionalPrefixes[method];
     if (!prefixes) return false;
 
-    return prefixes.some((prefix) => url === prefix || url.startsWith(`${prefix}/`));
+    return prefixes.some(
+      (prefix) => url === prefix || url.startsWith(`${prefix}/`),
+    );
   }
 }
