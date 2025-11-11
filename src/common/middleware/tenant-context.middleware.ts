@@ -28,18 +28,10 @@ export class TenantContextMiddleware implements NestMiddleware {
   constructor(private readonly tenantsService: TenantsService) {}
 
   async use(req: TenantAwareRequest, res: Response, next: NextFunction) {
-    const url = req.url ?? '';
+    const url = this.getRequestPath(req);
+    const normalizedUrl = url.toLowerCase();
 
-    // ✅ 1️⃣ Abaikan permintaan non-API publik (Swagger, favicon, file statis)
-    if (
-      url.startsWith('/api/docs') ||
-      url.startsWith('/api-json') ||
-      url.includes('swagger-ui') ||
-      url.startsWith('/favicon') ||
-      url.includes('.js') ||
-      url.includes('.css') ||
-      url.includes('.map')
-    ) {
+    if (this.shouldBypassPublicRoute(normalizedUrl)) {
       return next();
     }
 
@@ -47,7 +39,6 @@ export class TenantContextMiddleware implements NestMiddleware {
     req.tenantId = req.tenantId ?? null;
 
     try {
-      // ✅ 2️⃣ Ambil identifier tenant (Header > JWT > Subdomain)
       const tenantIdentifier =
         this.getTenantIdFromHeader(req) ??
         this.normalizeIdentifier(
@@ -57,21 +48,20 @@ export class TenantContextMiddleware implements NestMiddleware {
         this.getTenantDomainFromHost(req);
 
       if (!tenantIdentifier) {
-        if (this.isTenantOptional(req)) {
+        if (this.isTenantOptional(req, normalizedUrl)) {
           return next();
         }
 
         throw new BadRequestException('Tenant context tidak ditemukan');
       }
 
-      // ✅ 4️⃣ Resolve tenant dari DB
       const tenant = await this.resolveTenant(tenantIdentifier);
       req.tenant = tenant;
       req.tenantId = tenant.id;
       if (req.user) req.user['tenantId'] = tenant.id;
 
       this.logger.debug(
-        `🏷️ TenantContext resolved: ${tenant.name ?? tenant.id} (${tenant.id})`,
+        `??? TenantContext resolved: ${tenant.name ?? tenant.id} (${tenant.id})`,
       );
       next();
     } catch (error) {
@@ -81,6 +71,18 @@ export class TenantContextMiddleware implements NestMiddleware {
       );
       next(error);
     }
+  }
+
+  private shouldBypassPublicRoute(url: string): boolean {
+    return (
+      url.startsWith('/api/docs') ||
+      url.startsWith('/api-json') ||
+      url.includes('swagger-ui') ||
+      url.startsWith('/favicon') ||
+      url.includes('.js') ||
+      url.includes('.css') ||
+      url.includes('.map')
+    );
   }
 
   private getTenantIdFromHeader(req: TenantAwareRequest): string | null {
@@ -172,19 +174,35 @@ export class TenantContextMiddleware implements NestMiddleware {
     return trimmed.length > 0 ? trimmed : null;
   }
 
-  private isTenantOptional(req: TenantAwareRequest): boolean {
-    const method = (req.method ?? '').toUpperCase();
-    const url = (req.url ?? '').toLowerCase();
+  private getRequestPath(req: Request): string {
+    const originalUrl =
+      (req as any).originalUrl ??
+      req.url ??
+      (typeof (req as any).raw?.url === 'string' ? (req as any).raw.url : '') ??
+      '';
 
-    if (method === 'POST') {
-      if (
-        url.startsWith('/auth/register') ||
-        url.startsWith('/api/auth/register')
-      ) {
-        return true;
+    if (!originalUrl) {
+      return '/';
+    }
+
+    if (originalUrl.startsWith('http://') || originalUrl.startsWith('https://')) {
+      try {
+        return new URL(originalUrl).pathname || '/';
+      } catch {
+        return '/';
       }
     }
 
-    return false;
+    return originalUrl.startsWith('/') ? originalUrl : `/${originalUrl}`;
+  }
+
+  private isTenantOptional(req: TenantAwareRequest, url: string): boolean {
+    const method = (req.method ?? '').toUpperCase();
+    if (method !== 'POST') return false;
+
+    const isRegisterRoute =
+      url.startsWith('/auth/register') || url.startsWith('/api/auth/register');
+
+    return isRegisterRoute;
   }
 }

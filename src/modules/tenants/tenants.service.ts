@@ -79,18 +79,10 @@ export class TenantsService {
   // 🔍 FIND ONE BY CODE
   // ===========================================================
   async findByCode(code: string) {
-<<<<<<< ours
-    if (!code?.trim()) {
-      return null;
-    }
-
-    return this.prisma.tenant.findUnique({ where: { code: code.trim() } });
-=======
     if (!code) return null;
     return this.prisma.tenant.findUnique({
       where: { code: code.toLowerCase() },
     });
->>>>>>> theirs
   }
 
   // ===========================================================

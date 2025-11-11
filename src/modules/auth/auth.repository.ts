@@ -1,9 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
-import { RegisterDto } from './dto/register.dto';
+import { RegisterDto, REGISTER_ROLE_VALUES } from './dto/register.dto';
 
-const SUPPORTED_ROLES = ['OWNER', 'ADMIN', 'CUSTOMER'] as const;
-type Role = (typeof SUPPORTED_ROLES)[number];
+type Role = (typeof REGISTER_ROLE_VALUES)[number];
 
 @Injectable()
 export class AuthRepository {
@@ -28,9 +27,14 @@ export class AuthRepository {
     return prisma.user.findUnique({ where: { email: email.toLowerCase() } });
   }
 
-  async createUser(dto: RegisterDto & { password: string; tenantId: string }) {
+  async createUser(
+    dto: Pick<RegisterDto, 'name' | 'email' | 'role'> & {
+      password: string;
+      tenantId: string;
+    },
+  ) {
     const normalizedRole = dto.role?.toUpperCase?.() ?? 'CUSTOMER';
-    const role = SUPPORTED_ROLES.includes(normalizedRole as Role)
+    const role = REGISTER_ROLE_VALUES.includes(normalizedRole as Role)
       ? (normalizedRole as Role)
       : 'CUSTOMER';
 

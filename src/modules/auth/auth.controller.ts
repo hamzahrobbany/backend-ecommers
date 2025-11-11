@@ -38,13 +38,8 @@ export class AuthController {
       },
     },
   })
-<<<<<<< ours
-  async register(@Body() dto: RegisterDto, @Req() req: Request) {
-    return this.authService.register(dto, req.tenant);
-=======
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
->>>>>>> theirs
   }
 
   @Post('login')
