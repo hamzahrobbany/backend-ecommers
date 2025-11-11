@@ -8,7 +8,7 @@ import {
   ExpressAdapter,
   NestExpressApplication,
 } from '@nestjs/platform-express';
-import { Logger, RequestMethod } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import {
   SwaggerModule,
   DocumentBuilder,
@@ -29,11 +29,7 @@ import compression from 'compression';
 import cors from 'cors';
 
 // 📘 Swagger Plugins
-import {
-  swaggerAuthPlugin,
-  swaggerRequestInterceptor,
-  swaggerAuthStorageInstructions,
-} from './common/swagger/swagger-auth.plugin';
+import { swaggerAuthPlugin } from './common/swagger/swagger-auth.plugin';
 
 let cachedApp: NestFastifyApplication | NestExpressApplication;
 
@@ -58,7 +54,7 @@ export async function bootstrapServer(): Promise<
 
     const nativeExpress = expressApp.getHttpAdapter().getInstance();
 
-    nativeExpress.use(cors());
+    nativeExpress.use(cors({ origin: true, credentials: true }));
     nativeExpress.use(compression());
     nativeExpress.use(
       helmet({
@@ -72,12 +68,11 @@ export async function bootstrapServer(): Promise<
     // 🧩 Apply TenantContextMiddleware but exclude public routes
     expressApp.use((req, res, next) => {
       const url = req.url.toLowerCase();
-      const method = req.method.toUpperCase();
 
       const isPublic =
-        url.startsWith('/api/docs') ||
-        url.startsWith('/api-json') ||
-        url.startsWith('/swagger-ui') ||
+        url.includes('/api/docs') ||
+        url.includes('/swagger-ui') ||
+        url.includes('/api-json') ||
         url.startsWith('/favicon') ||
         url.startsWith('/auth/login') ||
         url.startsWith('/auth/register') ||
@@ -91,28 +86,47 @@ export async function bootstrapServer(): Promise<
 
     // 📘 Swagger hanya aktif di development
     if (process.env.NODE_ENV !== 'production') {
-      const config = new DocumentBuilder()
+      const builder = new DocumentBuilder()
         .setTitle('E-Commerce API')
-        .setDescription('Dokumentasi REST API Backend E-Commerce (Express Mode)')
+        .setDescription('Dokumentasi REST API Backend E-Commerce')
         .setVersion('1.0')
-        .addBearerAuth()
-        .build();
+        .addBearerAuth();
+
+      const swaggerBuilder =
+        typeof (builder as any).addApiHeader === 'function'
+          ? (builder as any).addApiHeader({
+              name: 'X-Tenant-ID',
+              required: false,
+              description: 'Tenant UUID (untuk multi-tenant context)',
+            })
+          : builder;
+
+      const config = swaggerBuilder.build();
 
       const document = SwaggerModule.createDocument(expressApp, config);
+
       const swaggerOptions: SwaggerCustomOptions = {
         swaggerOptions: {
           persistAuthorization: true,
           plugins: [swaggerAuthPlugin()],
-          requestInterceptor: swaggerRequestInterceptor,
+          requestInterceptor: (req) => {
+            try {
+              const token = window?.localStorage?.getItem('swagger_token');
+              const tenant = window?.localStorage?.getItem('swagger_tenant');
+              req.headers = req.headers || {};
+              if (token) req.headers.Authorization = `Bearer ${token}`;
+              if (tenant) req.headers['X-Tenant-ID'] = tenant;
+            } catch (e) {
+              console.warn('[Swagger] Failed to attach headers:', e);
+            }
+            return req;
+          },
         },
-        customJs: `
-          console.log('%c🚀 Swagger Auto Auth Enabled', 'color: #4CAF50; font-weight: bold;');
-          console.log(\`${swaggerAuthStorageInstructions}\`);
-        `,
+        customSiteTitle: 'E-Commerce API Docs',
       };
 
       SwaggerModule.setup('api/docs', expressApp, document, swaggerOptions);
-      Logger.log(`\n${swaggerAuthStorageInstructions}`, 'Swagger');
+      Logger.log('📘 Swagger Docs: http://localhost:3000/api/docs', 'Swagger');
     }
 
     await expressApp.init();
@@ -133,7 +147,7 @@ export async function bootstrapServer(): Promise<
     crossOriginEmbedderPolicy: false,
   });
   await fastifyApp.register(fastifyCompress);
-  await fastifyApp.register(fastifyCors, { origin: true });
+  await fastifyApp.register(fastifyCors, { origin: true, credentials: true });
 
   fastifyApp.setGlobalPrefix('api');
 
@@ -141,12 +155,11 @@ export async function bootstrapServer(): Promise<
   const tenantContext = fastifyApp.get(TenantContextMiddleware);
   fastifyApp.use((req, res, next) => {
     const url = req.url.toLowerCase();
-    const method = req.method.toUpperCase();
 
     const isPublic =
-      url.startsWith('/api/docs') ||
-      url.startsWith('/api-json') ||
-      url.startsWith('/swagger-ui') ||
+      url.includes('/api/docs') ||
+      url.includes('/swagger-ui') ||
+      url.includes('/api-json') ||
       url.startsWith('/favicon') ||
       url.startsWith('/auth/login') ||
       url.startsWith('/auth/register') ||
@@ -159,28 +172,47 @@ export async function bootstrapServer(): Promise<
 
   // 📘 Swagger
   if (process.env.NODE_ENV !== 'production') {
-    const config = new DocumentBuilder()
+    const builder = new DocumentBuilder()
       .setTitle('E-Commerce API')
-      .setDescription('Dokumentasi REST API Backend E-Commerce (Fastify Mode)')
+      .setDescription('Dokumentasi REST API Backend E-Commerce')
       .setVersion('1.0')
-      .addBearerAuth()
-      .build();
+      .addBearerAuth();
+
+    const swaggerBuilder =
+      typeof (builder as any).addApiHeader === 'function'
+        ? (builder as any).addApiHeader({
+            name: 'X-Tenant-ID',
+            required: false,
+            description: 'Tenant UUID (untuk multi-tenant context)',
+          })
+        : builder;
+
+    const config = swaggerBuilder.build();
 
     const document = SwaggerModule.createDocument(fastifyApp, config);
+
     const swaggerOptions: SwaggerCustomOptions = {
       swaggerOptions: {
         persistAuthorization: true,
         plugins: [swaggerAuthPlugin()],
-        requestInterceptor: swaggerRequestInterceptor,
+        requestInterceptor: (req) => {
+          try {
+            const token = window?.localStorage?.getItem('swagger_token');
+            const tenant = window?.localStorage?.getItem('swagger_tenant');
+            req.headers = req.headers || {};
+            if (token) req.headers.Authorization = `Bearer ${token}`;
+            if (tenant) req.headers['X-Tenant-ID'] = tenant;
+          } catch (e) {
+            console.warn('[Swagger] Failed to attach headers:', e);
+          }
+          return req;
+        },
       },
-      customJs: `
-        console.log('%c🚀 Swagger Auto Auth Enabled', 'color: #4CAF50; font-weight: bold;');
-        console.log(\`${swaggerAuthStorageInstructions}\`);
-      `,
+      customSiteTitle: 'E-Commerce API Docs',
     };
 
     SwaggerModule.setup('api/docs', fastifyApp, document, swaggerOptions);
-    Logger.log(`\n${swaggerAuthStorageInstructions}`, 'Swagger');
+    Logger.log('📘 Swagger Docs: http://localhost:3000/api/docs', 'Swagger');
   }
 
   cachedApp = fastifyApp;
