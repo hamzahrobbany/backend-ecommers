@@ -198,11 +198,16 @@ export class TenantContextMiddleware implements NestMiddleware {
 
   private isTenantOptional(req: TenantAwareRequest, url: string): boolean {
     const method = (req.method ?? '').toUpperCase();
-    if (method !== 'POST') return false;
+    if (!method) return false;
 
-    const isRegisterRoute =
-      url.startsWith('/auth/register') || url.startsWith('/api/auth/register');
+    const optionalPrefixes: Record<string, string[]> = {
+      POST: ['/auth/register', '/api/auth/register', '/tenants', '/api/tenants'],
+      GET: ['/tenants', '/api/tenants'],
+    };
 
-    return isRegisterRoute;
+    const prefixes = optionalPrefixes[method];
+    if (!prefixes) return false;
+
+    return prefixes.some((prefix) => url === prefix || url.startsWith(`${prefix}/`));
   }
 }
